@@ -11,7 +11,12 @@ const TILE_TYPES = {
     AIR: 0,
     DIRT: 1,
     STONE: 2,
-    GRASS: 3
+    GRASS: 3,
+    SAND: 4,
+    COAL: 5,
+    IRON: 6,
+    GOLD: 7,
+    BEDROCK: 8
 };
 
 // Enemy types

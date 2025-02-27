@@ -29,4 +29,24 @@ function setupEventListeners() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
     });
+    
+    // Regenerate world button
+    const regenerateButton = document.getElementById('regenerate-world');
+    regenerateButton.addEventListener('click', () => {
+        // Reset player health and position
+        gameState.player.health = 100;
+        updateHealth();
+        
+        // Clear enemies
+        gameState.enemies = [];
+        
+        // Generate new world
+        generateWorld();
+        
+        // Add visual feedback
+        regenerateButton.textContent = "Regenerating...";
+        setTimeout(() => {
+            regenerateButton.textContent = "Regenerate World";
+        }, 500);
+    });
 } 

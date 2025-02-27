@@ -46,11 +46,26 @@ function drawWorld() {
                 case TILE_TYPES.GRASS:
                     ctx.fillStyle = '#228B22';
                     break;
+                case TILE_TYPES.SAND:
+                    ctx.fillStyle = '#F0E68C';
+                    break;
+                case TILE_TYPES.COAL:
+                    ctx.fillStyle = '#2F4F4F';
+                    break;
+                case TILE_TYPES.IRON:
+                    ctx.fillStyle = '#CD853F';
+                    break;
+                case TILE_TYPES.GOLD:
+                    ctx.fillStyle = '#FFD700';
+                    break;
+                case TILE_TYPES.BEDROCK:
+                    ctx.fillStyle = '#1C1C1C';
+                    break;
                 default:
                     ctx.fillStyle = '#FF00FF'; // Error/debug color
             }
             
-            // Fill the tile
+            // Draw the tile
             ctx.fillRect(
                 x * TILE_SIZE - gameState.camera.x,
                 y * TILE_SIZE - gameState.camera.y,
@@ -58,16 +73,60 @@ function drawWorld() {
                 TILE_SIZE
             );
             
-            // Draw grid lines
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(
-                x * TILE_SIZE - gameState.camera.x,
-                y * TILE_SIZE - gameState.camera.y,
-                TILE_SIZE,
-                TILE_SIZE
-            );
+            // Add some texture/detail to tiles
+            addTileDetail(x, y, tileType);
         }
+    }
+}
+
+// Add visual details to tiles based on type
+function addTileDetail(x, y, tileType) {
+    const tileX = x * TILE_SIZE - gameState.camera.x;
+    const tileY = y * TILE_SIZE - gameState.camera.y;
+    
+    switch (tileType) {
+        case TILE_TYPES.GRASS:
+            // Add grass blades
+            ctx.fillStyle = '#32CD32';
+            for (let i = 0; i < 3; i++) {
+                const grassX = tileX + 5 + i * 10;
+                ctx.fillRect(grassX, tileY, 2, 5);
+            }
+            break;
+            
+        case TILE_TYPES.STONE:
+            // Add stone cracks
+            ctx.strokeStyle = '#707070';
+            ctx.beginPath();
+            ctx.moveTo(tileX + 5, tileY + 15);
+            ctx.lineTo(tileX + 15, tileY + 5);
+            ctx.stroke();
+            break;
+            
+        case TILE_TYPES.COAL:
+            // Add coal sparkles
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(tileX + 8, tileY + 8, 2, 2);
+            ctx.fillRect(tileX + 20, tileY + 15, 2, 2);
+            break;
+            
+        case TILE_TYPES.IRON:
+            // Add iron streaks
+            ctx.strokeStyle = '#A0522D';
+            ctx.beginPath();
+            ctx.moveTo(tileX + 5, tileY + 5);
+            ctx.lineTo(tileX + 25, tileY + 25);
+            ctx.stroke();
+            break;
+            
+        case TILE_TYPES.GOLD:
+            // Add gold sparkles
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.arc(tileX + 10, tileY + 10, 1, 0, Math.PI * 2);
+            ctx.arc(tileX + 20, tileY + 15, 1, 0, Math.PI * 2);
+            ctx.fill();
+            break;
     }
 }
 
