@@ -3,28 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Simulation</title>
-    <link rel="stylesheet" href="styles.css">
-    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-    }
-    </script>
+    <title>Ant Terraria</title>
+    <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <div class="game-container">
+    <div id="game-container">
         <canvas id="gameCanvas"></canvas>
-        <div class="controls">
-            <p>Controls:</p>
-            <p>WASD or Arrow Keys - Move</p>
-            <p>Space - Dig</p>
-            <p>E - Grab/Drop Food</p>
+        <div id="ui">Health: <span id="health">100</span></div>
+        <div id="tutorial">
+            Use WASD or Arrow Keys to move. The ant moves smoothly on blocks. Click to dig/attack. The ant can dig through dirt!
         </div>
     </div>
-    <script type="module" src="js/main.js"></script>
+
+    <!-- Load game scripts in the correct order -->
+    <script src="js/constants.js"></script>
+    <script src="js/gameState.js"></script>
+    <script src="js/worldGeneration.js"></script>
+    <script src="js/rendering.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/game.js"></script>
 </body>
-</html> 
+</html>
