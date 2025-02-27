@@ -41,39 +41,7 @@ function updatePlayer() {
     }
     
     // Improved collision detection - separate X and Y movement for better precision
-    // First handle horizontal movement
-    let newX = gameState.player.x + gameState.player.velocityX;
-    
-    // Check horizontal collisions
-    const horizontalCollision = checkHorizontalCollisions(newX, gameState.player.y);
-    
-    if (!horizontalCollision.collision) {
-        gameState.player.x = newX;
-    } else {
-        // Snap to the edge of the tile for smoother wall interactions
-        gameState.player.x = horizontalCollision.snapPosition;
-        gameState.player.velocityX = 0;
-    }
-    
-    // Then handle vertical movement
-    let newY = gameState.player.y + gameState.player.velocityY;
-    
-    // Check vertical collisions
-    const verticalCollision = checkVerticalCollisions(gameState.player.x, newY);
-    
-    if (!verticalCollision.collision) {
-        gameState.player.y = newY;
-        gameState.player.isGrounded = false;
-    } else {
-        // Snap to the edge of the tile
-        gameState.player.y = verticalCollision.snapPosition;
-        gameState.player.velocityY = 0;
-        
-        // Set grounded state if collision is below
-        if (verticalCollision.direction === 'bottom') {
-            gameState.player.isGrounded = true;
-        }
-    }
+    movePlayerWithCollision();
     
     // Add friction when on ground for better control
     if (gameState.player.isGrounded) {
@@ -83,8 +51,10 @@ function updatePlayer() {
     // Check world boundaries
     if (gameState.player.x < 0) {
         gameState.player.x = 0;
+        gameState.player.velocityX = 0;
     } else if (gameState.player.x + gameState.player.width > WORLD_WIDTH * TILE_SIZE) {
         gameState.player.x = WORLD_WIDTH * TILE_SIZE - gameState.player.width;
+        gameState.player.velocityX = 0;
     }
     
     // Check if player fell off the world
@@ -96,6 +66,143 @@ function updatePlayer() {
     }
     
     // Handle digging (mouse interaction)
+    handleDigging();
+}
+
+// Improved collision detection with separate X and Y movement
+function movePlayerWithCollision() {
+    // Store original position for corner handling
+    const originalX = gameState.player.x;
+    const originalY = gameState.player.y;
+    
+    // First move horizontally and check for collisions
+    const newX = gameState.player.x + gameState.player.velocityX;
+    gameState.player.x = newX;
+    
+    // Check for horizontal collisions
+    const horizontalCollision = checkHorizontalCollisions();
+    
+    // Then move vertically and check for collisions
+    const newY = gameState.player.y + gameState.player.velocityY;
+    gameState.player.y = newY;
+    
+    // Check for vertical collisions
+    const verticalCollision = checkVerticalCollisions();
+    
+    // Handle corner cases - if we're stuck in a corner, try to slide along the wall
+    if (horizontalCollision && verticalCollision) {
+        // Try to resolve by sliding along the wall
+        handleCornerCase(originalX, originalY);
+    }
+}
+
+// Check for horizontal collisions and resolve them
+function checkHorizontalCollisions() {
+    // Get the tiles the player is overlapping with
+    const playerLeft = Math.floor(gameState.player.x / TILE_SIZE);
+    const playerRight = Math.floor((gameState.player.x + gameState.player.width - 1) / TILE_SIZE);
+    const playerTop = Math.floor(gameState.player.y / TILE_SIZE);
+    const playerBottom = Math.floor((gameState.player.y + gameState.player.height - 1) / TILE_SIZE);
+    
+    // Check each tile the player might be colliding with horizontally
+    let collision = false;
+    
+    // Check all tiles along the player's height
+    for (let y = playerTop; y <= playerBottom; y++) {
+        if (y < 0 || y >= WORLD_HEIGHT) continue;
+        
+        // Check right edge collision
+        if (gameState.player.velocityX > 0) {
+            if (playerRight < WORLD_WIDTH && gameState.world[y][playerRight] !== TILE_TYPES.AIR) {
+                // Collision on right side
+                gameState.player.x = playerRight * TILE_SIZE - gameState.player.width;
+                gameState.player.velocityX = 0;
+                collision = true;
+                break;
+            }
+        }
+        // Check left edge collision
+        else if (gameState.player.velocityX < 0) {
+            if (playerLeft >= 0 && gameState.world[y][playerLeft] !== TILE_TYPES.AIR) {
+                // Collision on left side
+                gameState.player.x = (playerLeft + 1) * TILE_SIZE;
+                gameState.player.velocityX = 0;
+                collision = true;
+                break;
+            }
+        }
+    }
+    
+    return collision;
+}
+
+// Check for vertical collisions and resolve them
+function checkVerticalCollisions() {
+    // Get the tiles the player is overlapping with after horizontal movement
+    const playerLeft = Math.floor(gameState.player.x / TILE_SIZE);
+    const playerRight = Math.floor((gameState.player.x + gameState.player.width - 1) / TILE_SIZE);
+    const playerTop = Math.floor(gameState.player.y / TILE_SIZE);
+    const playerBottom = Math.floor((gameState.player.y + gameState.player.height - 1) / TILE_SIZE);
+    
+    // Reset grounded state
+    gameState.player.isGrounded = false;
+    
+    // Check each tile the player might be colliding with vertically
+    let collision = false;
+    
+    // Check all tiles along the player's width
+    for (let x = playerLeft; x <= playerRight; x++) {
+        if (x < 0 || x >= WORLD_WIDTH) continue;
+        
+        // Check bottom edge collision (falling)
+        if (gameState.player.velocityY > 0) {
+            if (playerBottom < WORLD_HEIGHT && gameState.world[playerBottom][x] !== TILE_TYPES.AIR) {
+                // Collision on bottom side - player is on ground
+                gameState.player.y = playerBottom * TILE_SIZE - gameState.player.height;
+                gameState.player.velocityY = 0;
+                gameState.player.isGrounded = true;
+                collision = true;
+                break;
+            }
+        }
+        // Check top edge collision (jumping)
+        else if (gameState.player.velocityY < 0) {
+            if (playerTop >= 0 && gameState.world[playerTop][x] !== TILE_TYPES.AIR) {
+                // Collision on top side - player hit ceiling
+                gameState.player.y = (playerTop + 1) * TILE_SIZE;
+                gameState.player.velocityY = 0;
+                collision = true;
+                break;
+            }
+        }
+    }
+    
+    return collision;
+}
+
+// Handle corner cases where player gets stuck
+function handleCornerCase(originalX, originalY) {
+    // Try to resolve by prioritizing vertical movement
+    gameState.player.x = originalX;
+    gameState.player.y += gameState.player.velocityY;
+    
+    if (checkVerticalCollisions()) {
+        // If vertical movement still causes collision, try horizontal
+        gameState.player.y = originalY;
+        gameState.player.x += gameState.player.velocityX;
+        
+        if (checkHorizontalCollisions()) {
+            // If both directions cause collisions, just revert to original position
+            gameState.player.x = originalX;
+            gameState.player.y = originalY;
+            gameState.player.velocityX = 0;
+            gameState.player.velocityY = 0;
+        }
+    }
+}
+
+// Handle digging functionality
+function handleDigging() {
     if (gameState.mouseDown) {
         const mouseWorldX = gameState.mouseX + gameState.camera.x;
         const mouseWorldY = gameState.mouseY + gameState.camera.y;
@@ -143,104 +250,6 @@ function updatePlayer() {
     }
 }
 
-// Helper function to check horizontal collisions
-function checkHorizontalCollisions(newX, y) {
-    const result = {
-        collision: false,
-        snapPosition: newX,
-        direction: null
-    };
-    
-    // Calculate tile positions
-    const playerTileY1 = Math.floor(y / TILE_SIZE);
-    const playerTileY2 = Math.floor((y + gameState.player.height - 1) / TILE_SIZE);
-    
-    // Check if moving right
-    if (gameState.player.velocityX > 0) {
-        const rightEdgeX = newX + gameState.player.width;
-        const rightTileX = Math.floor(rightEdgeX / TILE_SIZE);
-        
-        // Check all tiles along the right edge
-        for (let tileY = playerTileY1; tileY <= playerTileY2; tileY++) {
-            if (tileY < 0 || tileY >= WORLD_HEIGHT || rightTileX < 0 || rightTileX >= WORLD_WIDTH) continue;
-            
-            if (gameState.world[tileY][rightTileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = rightTileX * TILE_SIZE - gameState.player.width - 0.1;
-                result.direction = 'right';
-                break;
-            }
-        }
-    }
-    // Check if moving left
-    else if (gameState.player.velocityX < 0) {
-        const leftTileX = Math.floor(newX / TILE_SIZE);
-        
-        // Check all tiles along the left edge
-        for (let tileY = playerTileY1; tileY <= playerTileY2; tileY++) {
-            if (tileY < 0 || tileY >= WORLD_HEIGHT || leftTileX < 0 || leftTileX >= WORLD_WIDTH) continue;
-            
-            if (gameState.world[tileY][leftTileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = (leftTileX + 1) * TILE_SIZE + 0.1;
-                result.direction = 'left';
-                break;
-            }
-        }
-    }
-    
-    return result;
-}
-
-// Helper function to check vertical collisions
-function checkVerticalCollisions(x, newY) {
-    const result = {
-        collision: false,
-        snapPosition: newY,
-        direction: null
-    };
-    
-    // Calculate tile positions
-    const playerTileX1 = Math.floor(x / TILE_SIZE);
-    const playerTileX2 = Math.floor((x + gameState.player.width - 1) / TILE_SIZE);
-    
-    // Check if moving down
-    if (gameState.player.velocityY > 0) {
-        const bottomEdgeY = newY + gameState.player.height;
-        const bottomTileY = Math.floor(bottomEdgeY / TILE_SIZE);
-        
-        // Check all tiles along the bottom edge
-        for (let tileX = playerTileX1; tileX <= playerTileX2; tileX++) {
-            if (tileX < 0 || tileX >= WORLD_WIDTH || bottomTileY < 0 || bottomTileY >= WORLD_HEIGHT) continue;
-            
-            if (gameState.world[bottomTileY][tileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = bottomTileY * TILE_SIZE - gameState.player.height - 0.1;
-                result.direction = 'bottom';
-                break;
-            }
-        }
-    }
-    // Check if moving up
-    else if (gameState.player.velocityY < 0) {
-        const topTileY = Math.floor(newY / TILE_SIZE);
-        
-        // Check all tiles along the top edge
-        for (let tileX = playerTileX1; tileX <= playerTileX2; tileX++) {
-            if (tileX < 0 || tileX >= WORLD_WIDTH || topTileY < 0 || topTileY >= WORLD_HEIGHT) continue;
-            
-            if (gameState.world[topTileY][tileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = (topTileY + 1) * TILE_SIZE + 0.1;
-                result.direction = 'top';
-                break;
-            }
-        }
-    }
-    
-    return result;
-}
-
 // Update enemy positions and AI
 function updateEnemies() {
     for (let i = 0; i < gameState.enemies.length; i++) {
@@ -250,58 +259,15 @@ function updateEnemies() {
         enemy.velocityY += GRAVITY;
         
         // Update position with improved collision detection
-        // First handle horizontal movement
-        let newX = enemy.x + enemy.velocityX;
+        updateEnemyPosition(enemy);
         
-        // Check horizontal collisions
-        const horizontalCollision = checkEnemyHorizontalCollisions(enemy, newX, enemy.y);
-        
-        if (!horizontalCollision.collision) {
-            enemy.x = newX;
-        } else {
-            // Snap to the edge of the tile
-            enemy.x = horizontalCollision.snapPosition;
-            enemy.velocityX = -enemy.velocityX; // Reverse direction
-        }
-        
-        // Then handle vertical movement
-        let newY = enemy.y + enemy.velocityY;
-        
-        // Check vertical collisions
-        const verticalCollision = checkEnemyVerticalCollisions(enemy, enemy.x, newY);
-        
-        if (!verticalCollision.collision) {
-            enemy.y = newY;
-        } else {
-            // Snap to the edge of the tile
-            enemy.y = verticalCollision.snapPosition;
-            enemy.velocityY = 0;
-        }
-        
-        // Check if enemy is on an edge (simple AI to avoid falling)
-        if (enemy.velocityY === 0) {
-            const checkX = enemy.velocityX > 0 ? 
-                Math.floor((enemy.x + enemy.width + 2) / TILE_SIZE) : 
-                Math.floor((enemy.x - 2) / TILE_SIZE);
-            
-            const checkY = Math.floor((enemy.y + enemy.height + 2) / TILE_SIZE);
-            
-            if (
-                checkX >= 0 && checkX < WORLD_WIDTH &&
-                checkY >= 0 && checkY < WORLD_HEIGHT
-            ) {
-                if (gameState.world[checkY][checkX] === TILE_TYPES.AIR) {
-                    // No ground ahead, reverse direction
-                    enemy.velocityX = -enemy.velocityX;
-                }
-            }
-        }
-        
-        // Check for collision with player using more precise AABB collision
-        if (checkAABBCollision(
-            enemy.x, enemy.y, enemy.width, enemy.height,
-            gameState.player.x, gameState.player.y, gameState.player.width, gameState.player.height
-        )) {
+        // Check for collision with player
+        if (
+            enemy.x < gameState.player.x + gameState.player.width &&
+            enemy.x + enemy.width > gameState.player.x &&
+            enemy.y < gameState.player.y + gameState.player.height &&
+            enemy.y + enemy.height > gameState.player.y
+        ) {
             // Damage player
             gameState.player.health -= enemy.damage * 0.1;
             updateHealth();
@@ -321,106 +287,99 @@ function updateEnemies() {
     }
 }
 
-// Helper function to check enemy horizontal collisions
-function checkEnemyHorizontalCollisions(enemy, newX, y) {
-    const result = {
-        collision: false,
-        snapPosition: newX
-    };
+// Update enemy position with improved collision detection
+function updateEnemyPosition(enemy) {
+    // First move horizontally and check for collisions
+    const newX = enemy.x + enemy.velocityX;
     
-    // Calculate tile positions
-    const enemyTileY1 = Math.floor(y / TILE_SIZE);
-    const enemyTileY2 = Math.floor((y + enemy.height - 1) / TILE_SIZE);
+    // Check horizontal collisions
+    const enemyTileX1 = Math.floor(newX / TILE_SIZE);
+    const enemyTileX2 = Math.floor((newX + enemy.width - 1) / TILE_SIZE);
+    const enemyTileY1 = Math.floor(enemy.y / TILE_SIZE);
+    const enemyTileY2 = Math.floor((enemy.y + enemy.height - 1) / TILE_SIZE);
     
-    // Check if moving right
-    if (enemy.velocityX > 0) {
-        const rightEdgeX = newX + enemy.width;
-        const rightTileX = Math.floor(rightEdgeX / TILE_SIZE);
+    let horizontalCollision = false;
+    
+    // Check all tiles along the enemy's height
+    for (let y = enemyTileY1; y <= enemyTileY2; y++) {
+        if (y < 0 || y >= WORLD_HEIGHT) continue;
         
-        // Check all tiles along the right edge
-        for (let tileY = enemyTileY1; tileY <= enemyTileY2; tileY++) {
-            if (tileY < 0 || tileY >= WORLD_HEIGHT || rightTileX < 0 || rightTileX >= WORLD_WIDTH) continue;
-            
-            if (gameState.world[tileY][rightTileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = rightTileX * TILE_SIZE - enemy.width - 0.1;
+        if (enemy.velocityX > 0) {
+            if (enemyTileX2 < WORLD_WIDTH && gameState.world[y][enemyTileX2] !== TILE_TYPES.AIR) {
+                horizontalCollision = true;
                 break;
             }
-        }
-    }
-    // Check if moving left
-    else if (enemy.velocityX < 0) {
-        const leftTileX = Math.floor(newX / TILE_SIZE);
-        
-        // Check all tiles along the left edge
-        for (let tileY = enemyTileY1; tileY <= enemyTileY2; tileY++) {
-            if (tileY < 0 || tileY >= WORLD_HEIGHT || leftTileX < 0 || leftTileX >= WORLD_WIDTH) continue;
-            
-            if (gameState.world[tileY][leftTileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = (leftTileX + 1) * TILE_SIZE + 0.1;
+        } else if (enemy.velocityX < 0) {
+            if (enemyTileX1 >= 0 && gameState.world[y][enemyTileX1] !== TILE_TYPES.AIR) {
+                horizontalCollision = true;
                 break;
             }
         }
     }
     
-    return result;
-}
-
-// Helper function to check enemy vertical collisions
-function checkEnemyVerticalCollisions(enemy, x, newY) {
-    const result = {
-        collision: false,
-        snapPosition: newY
-    };
+    if (!horizontalCollision) {
+        enemy.x = newX;
+    } else {
+        // Reverse direction
+        enemy.velocityX = -enemy.velocityX;
+    }
     
-    // Calculate tile positions
-    const enemyTileX1 = Math.floor(x / TILE_SIZE);
-    const enemyTileX2 = Math.floor((x + enemy.width - 1) / TILE_SIZE);
+    // Then move vertically and check for collisions
+    const newY = enemy.y + enemy.velocityY;
     
-    // Check if moving down
-    if (enemy.velocityY > 0) {
-        const bottomEdgeY = newY + enemy.height;
-        const bottomTileY = Math.floor(bottomEdgeY / TILE_SIZE);
+    // Check vertical collisions
+    const updatedEnemyTileX1 = Math.floor(enemy.x / TILE_SIZE);
+    const updatedEnemyTileX2 = Math.floor((enemy.x + enemy.width - 1) / TILE_SIZE);
+    const updatedEnemyTileY1 = Math.floor(newY / TILE_SIZE);
+    const updatedEnemyTileY2 = Math.floor((newY + enemy.height - 1) / TILE_SIZE);
+    
+    let verticalCollision = false;
+    let isGrounded = false;
+    
+    // Check all tiles along the enemy's width
+    for (let x = updatedEnemyTileX1; x <= updatedEnemyTileX2; x++) {
+        if (x < 0 || x >= WORLD_WIDTH) continue;
         
-        // Check all tiles along the bottom edge
-        for (let tileX = enemyTileX1; tileX <= enemyTileX2; tileX++) {
-            if (tileX < 0 || tileX >= WORLD_WIDTH || bottomTileY < 0 || bottomTileY >= WORLD_HEIGHT) continue;
-            
-            if (gameState.world[bottomTileY][tileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = bottomTileY * TILE_SIZE - enemy.height - 0.1;
+        if (enemy.velocityY > 0) {
+            if (updatedEnemyTileY2 < WORLD_HEIGHT && gameState.world[updatedEnemyTileY2][x] !== TILE_TYPES.AIR) {
+                verticalCollision = true;
+                isGrounded = true;
                 break;
             }
-        }
-    }
-    // Check if moving up
-    else if (enemy.velocityY < 0) {
-        const topTileY = Math.floor(newY / TILE_SIZE);
-        
-        // Check all tiles along the top edge
-        for (let tileX = enemyTileX1; tileX <= enemyTileX2; tileX++) {
-            if (tileX < 0 || tileX >= WORLD_WIDTH || topTileY < 0 || topTileY >= WORLD_HEIGHT) continue;
-            
-            if (gameState.world[topTileY][tileX] !== TILE_TYPES.AIR) {
-                result.collision = true;
-                result.snapPosition = (topTileY + 1) * TILE_SIZE + 0.1;
+        } else if (enemy.velocityY < 0) {
+            if (updatedEnemyTileY1 >= 0 && gameState.world[updatedEnemyTileY1][x] !== TILE_TYPES.AIR) {
+                verticalCollision = true;
                 break;
             }
         }
     }
     
-    return result;
-}
-
-// Helper function for AABB collision detection
-function checkAABBCollision(x1, y1, w1, h1, x2, y2, w2, h2) {
-    return (
-        x1 < x2 + w2 &&
-        x1 + w1 > x2 &&
-        y1 < y2 + h2 &&
-        y1 + h1 > y2
-    );
+    if (!verticalCollision) {
+        enemy.y = newY;
+    } else {
+        if (enemy.velocityY > 0) {
+            // Land on the ground precisely
+            enemy.y = updatedEnemyTileY2 * TILE_SIZE - enemy.height;
+        } else {
+            // Hit ceiling precisely
+            enemy.y = (updatedEnemyTileY1 + 1) * TILE_SIZE;
+        }
+        enemy.velocityY = 0;
+    }
+    
+    // Check if enemy is on an edge (simple AI to avoid falling)
+    if (isGrounded) {
+        const checkX = enemy.velocityX > 0 ? updatedEnemyTileX2 + 1 : updatedEnemyTileX1 - 1;
+        if (
+            checkX >= 0 && checkX < WORLD_WIDTH &&
+            updatedEnemyTileY2 + 1 < WORLD_HEIGHT
+        ) {
+            if (gameState.world[updatedEnemyTileY2 + 1][checkX] === TILE_TYPES.AIR) {
+                // No ground ahead, reverse direction
+                enemy.velocityX = -enemy.velocityX;
+            }
+        }
+    }
 }
 
 // Update camera position to follow player
