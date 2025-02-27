@@ -3,14 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Terraria</title>
+    <title>Ant Terraria - Persistent World</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
         <div id="ui">
-            Health: <span id="health">100</span>
+            <div id="health">Health: 100</div>
+            <div id="score">Score: 0</div>
+            <div id="inventory">
+                <span id="dirt-count">Dirt: 0</span>
+                <span id="stone-count">Stone: 0</span>
+                <span id="ore-count">Ore: 0</span>
+            </div>
             <button id="regenerate-world">Regenerate World</button>
         </div>
         <div id="tutorial">
@@ -18,7 +23,7 @@
         </div>
     </div>
 
-    <!-- Load game scripts in the correct order -->
+    <!-- Load scripts in the correct order -->
     <script src="js/constants.js"></script>
     <script src="js/gameState.js"></script>
     <script src="js/worldGeneration.js"></script>

@@ -27,7 +27,7 @@ canvas {
     gap: 20px;
 }
 
-#regenerate-world {
+#regenerate-world, #save-game {
     background-color: #4CAF50;
     border: none;
     color: white;
@@ -43,8 +43,16 @@ canvas {
     transition: background-color 0.3s;
 }
 
-#regenerate-world:hover {
+#regenerate-world:hover, #save-game:hover {
     background-color: #45a049;
+}
+
+#save-game {
+    background-color: #2196F3;
+}
+
+#save-game:hover {
+    background-color: #0b7dda;
 }
 
 #tutorial {
@@ -58,4 +66,17 @@ canvas {
     font-size: 16px;
     background-color: rgba(0, 0, 0, 0.5);
     padding: 10px;
+}
+
+/* World size indicator */
+#world-info {
+    position: absolute;
+    bottom: 60px;
+    right: 10px;
+    color: white;
+    text-shadow: 1px 1px 2px black;
+    font-size: 14px;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 5px 10px;
+    border-radius: 4px;
 } 

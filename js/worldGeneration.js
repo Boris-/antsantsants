@@ -1,83 +1,41 @@
 // Generate world
 function generateWorld() {
-    // Initialize with air
-    for (let y = 0; y < WORLD_HEIGHT; y++) {
-        gameState.world[y] = [];
-        for (let x = 0; x < WORLD_WIDTH; x++) {
-            gameState.world[y][x] = TILE_TYPES.AIR;
-        }
-    }
-
-    // Generate terrain using improved procedural generation
-    generateProceduralTerrain();
+    // Reset world data
+    gameState.world = {};
+    gameState.loadedChunks = new Set();
+    gameState.terrainHeights = [];
+    gameState.worldSeed = Math.floor(Math.random() * 1000000);
+    gameState.hasUnsavedChanges = true;
     
-    // Add caves and structures
-    generateCaves();
+    // Generate terrain heights for the entire world
+    generateTerrainHeights();
     
-    // Add ore deposits
-    generateOreDeposits();
+    // We'll only generate chunks as needed, not the entire world at once
+    // This makes it possible to have a huge world without performance issues
     
     // Place player above the surface at a safe location
     placePlayerSafely();
     
-    // Add some enemies on the surface
+    // Add some enemies on the surface near the player
     spawnEnemies();
 }
 
-// Generate procedural terrain with smooth hills and valleys
-function generateProceduralTerrain() {
+// Generate terrain heights for the entire world
+function generateTerrainHeights() {
     // Base surface level
     const baseSurfaceLevel = Math.floor(WORLD_HEIGHT / 3);
     
-    // Generate terrain heights using a simple noise function
-    const terrainHeights = generateTerrainHeights(baseSurfaceLevel);
-    
-    // Apply the terrain heights to create the surface
-    for (let x = 0; x < WORLD_WIDTH; x++) {
-        const surfaceY = terrainHeights[x];
-        
-        // Create layers of different materials
-        for (let y = surfaceY; y < WORLD_HEIGHT; y++) {
-            if (y === surfaceY) {
-                // Surface layer is grass or sand based on height
-                if (surfaceY < baseSurfaceLevel - 2) {
-                    // Higher elevations are grass
-                    gameState.world[y][x] = TILE_TYPES.GRASS;
-                } else if (surfaceY > baseSurfaceLevel + 2) {
-                    // Lower elevations are sand
-                    gameState.world[y][x] = TILE_TYPES.SAND;
-                } else {
-                    // Middle elevations are grass
-                    gameState.world[y][x] = TILE_TYPES.GRASS;
-                }
-            } else if (y < surfaceY + 4 + Math.floor(Math.random() * 3)) {
-                // Dirt layer with variable thickness
-                gameState.world[y][x] = TILE_TYPES.DIRT;
-            } else if (y > WORLD_HEIGHT - 3) {
-                // Bedrock at the bottom of the world
-                gameState.world[y][x] = TILE_TYPES.BEDROCK;
-            } else {
-                // Stone layer with occasional dirt patches
-                gameState.world[y][x] = Math.random() < 0.9 ? TILE_TYPES.STONE : TILE_TYPES.DIRT;
-            }
-        }
-    }
-    
-    // Store the terrain heights for later use (player placement, etc.)
-    gameState.terrainHeights = terrainHeights;
-}
-
-// Generate terrain heights using a simple noise algorithm
-function generateTerrainHeights(baseSurfaceLevel) {
-    const heights = [];
-    
-    // Generate initial random points
-    const numControlPoints = 8;
+    // Generate control points for the entire world
+    const numControlPoints = Math.ceil(WORLD_WIDTH / 50); // One control point every 50 blocks
     const controlPoints = [];
+    
+    // Use the world seed for consistent terrain
+    const random = new SeededRandom(gameState.worldSeed);
     
     for (let i = 0; i < numControlPoints; i++) {
         const x = Math.floor(i * WORLD_WIDTH / (numControlPoints - 1));
-        const height = baseSurfaceLevel + Math.floor(Math.random() * 7) - 3;
+        // More variation for a more interesting world
+        const height = baseSurfaceLevel + Math.floor(random.next() * 40) - 20;
         controlPoints.push({ x, height });
     }
     
@@ -106,166 +64,54 @@ function generateTerrainHeights(baseSurfaceLevel) {
             height = Math.floor(leftPoint.height * (1 - ft) + rightPoint.height * ft);
         }
         
-        heights[x] = height;
+        // Add small noise for more natural terrain
+        const noise = Math.floor(random.next() * 3) - 1;
+        gameState.terrainHeights[x] = height + noise;
     }
     
-    return heights;
+    // Add special terrain features
+    addTerrainFeatures();
 }
 
-// Generate caves using cellular automata
-function generateCaves() {
-    // Initialize a noise map for cave generation
-    let caveMap = [];
-    for (let y = 0; y < WORLD_HEIGHT; y++) {
-        caveMap[y] = [];
-        for (let x = 0; x < WORLD_WIDTH; x++) {
-            // Only consider generating caves below the surface
-            if (y > gameState.terrainHeights[x] + 5) {
-                // 40% chance of starting with a "filled" cell
-                caveMap[y][x] = Math.random() < 0.4;
-            } else {
-                caveMap[y][x] = false; // No caves near the surface
+// Add special terrain features like mountains, valleys, etc.
+function addTerrainFeatures() {
+    const random = new SeededRandom(gameState.worldSeed + 1); // Different seed for features
+    
+    // Add some mountains
+    const numMountains = 5 + Math.floor(random.next() * 10);
+    for (let i = 0; i < numMountains; i++) {
+        const mountainCenter = Math.floor(random.next() * WORLD_WIDTH);
+        const mountainWidth = 20 + Math.floor(random.next() * 40);
+        const mountainHeight = 20 + Math.floor(random.next() * 30);
+        
+        // Create mountain shape
+        for (let x = mountainCenter - mountainWidth; x <= mountainCenter + mountainWidth; x++) {
+            if (x >= 0 && x < WORLD_WIDTH) {
+                const distance = Math.abs(x - mountainCenter);
+                const heightReduction = (distance / mountainWidth) * mountainHeight;
+                const newHeight = gameState.terrainHeights[x] - mountainHeight + heightReduction;
+                gameState.terrainHeights[x] = Math.min(gameState.terrainHeights[x], newHeight);
             }
         }
     }
     
-    // Run cellular automata iterations to create natural-looking caves
-    const iterations = 4;
-    for (let i = 0; i < iterations; i++) {
-        caveMap = evolveCaves(caveMap);
-    }
-    
-    // Apply the cave map to the world
-    for (let y = 0; y < WORLD_HEIGHT; y++) {
-        for (let x = 0; x < WORLD_WIDTH; x++) {
-            if (caveMap[y][x] && gameState.world[y][x] !== TILE_TYPES.AIR) {
-                gameState.world[y][x] = TILE_TYPES.AIR; // Carve out caves
+    // Add some valleys/canyons
+    const numValleys = 3 + Math.floor(random.next() * 7);
+    for (let i = 0; i < numValleys; i++) {
+        const valleyCenter = Math.floor(random.next() * WORLD_WIDTH);
+        const valleyWidth = 15 + Math.floor(random.next() * 30);
+        const valleyDepth = 15 + Math.floor(random.next() * 25);
+        
+        // Create valley shape
+        for (let x = valleyCenter - valleyWidth; x <= valleyCenter + valleyWidth; x++) {
+            if (x >= 0 && x < WORLD_WIDTH) {
+                const distance = Math.abs(x - valleyCenter);
+                const depthReduction = (distance / valleyWidth) * valleyDepth;
+                const newHeight = gameState.terrainHeights[x] + valleyDepth - depthReduction;
+                gameState.terrainHeights[x] = Math.max(gameState.terrainHeights[x], newHeight);
             }
         }
     }
-}
-
-// Evolve the cave map using cellular automata rules
-function evolveCaves(caveMap) {
-    const newMap = [];
-    for (let y = 0; y < WORLD_HEIGHT; y++) {
-        newMap[y] = [];
-        for (let x = 0; x < WORLD_WIDTH; x++) {
-            // Count filled neighbors
-            let filledNeighbors = 0;
-            for (let ny = -1; ny <= 1; ny++) {
-                for (let nx = -1; nx <= 1; nx++) {
-                    if (nx === 0 && ny === 0) continue; // Skip self
-                    
-                    const checkY = y + ny;
-                    const checkX = x + nx;
-                    
-                    // Count edge cells as filled
-                    if (checkX < 0 || checkX >= WORLD_WIDTH || checkY < 0 || checkY >= WORLD_HEIGHT) {
-                        filledNeighbors++;
-                    } else if (caveMap[checkY][checkX]) {
-                        filledNeighbors++;
-                    }
-                }
-            }
-            
-            // Apply cellular automata rules
-            if (caveMap[y][x]) {
-                // If cell is filled, stay filled if it has 4 or more filled neighbors
-                newMap[y][x] = filledNeighbors >= 4;
-            } else {
-                // If cell is empty, become filled if it has 5 or more filled neighbors
-                newMap[y][x] = filledNeighbors >= 5;
-            }
-        }
-    }
-    return newMap;
-}
-
-// Generate ore deposits throughout the stone layer
-function generateOreDeposits() {
-    // Generate different types of ore veins
-    generateOreType(TILE_TYPES.COAL, 0.08, 5, 8);  // Common coal
-    generateOreType(TILE_TYPES.IRON, 0.04, 3, 6);  // Less common iron
-    generateOreType(TILE_TYPES.GOLD, 0.01, 2, 4);  // Rare gold
-}
-
-// Generate a specific type of ore throughout the world
-function generateOreType(oreType, probability, minSize, maxSize) {
-    for (let y = 0; y < WORLD_HEIGHT; y++) {
-        // Different ore types appear at different depths
-        let depthProbability = probability;
-        
-        // Adjust probability based on depth
-        if (oreType === TILE_TYPES.COAL) {
-            // Coal is more common near the surface
-            depthProbability *= (1 - y / WORLD_HEIGHT);
-        } else if (oreType === TILE_TYPES.IRON) {
-            // Iron is more common in the middle
-            depthProbability *= Math.sin((y / WORLD_HEIGHT) * Math.PI);
-        } else if (oreType === TILE_TYPES.GOLD) {
-            // Gold is more common deeper
-            depthProbability *= (y / WORLD_HEIGHT);
-        }
-        
-        for (let x = 0; x < WORLD_WIDTH; x++) {
-            if (gameState.world[y][x] === TILE_TYPES.STONE && Math.random() < depthProbability) {
-                // Start an ore vein
-                const size = minSize + Math.floor(Math.random() * (maxSize - minSize + 1));
-                generateOreVein(x, y, size, oreType);
-            }
-        }
-    }
-}
-
-// Generate a small vein of ore starting from a point
-function generateOreVein(startX, startY, size, oreType) {
-    // Simple flood fill for the ore vein
-    let placedOre = 0;
-    let queue = [{ x: startX, y: startY }];
-    
-    while (queue.length > 0 && placedOre < size) {
-        const current = queue.shift();
-        const { x, y } = current;
-        
-        // Skip if out of bounds
-        if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) continue;
-        
-        // Skip if not stone
-        if (gameState.world[y][x] !== TILE_TYPES.STONE) continue;
-        
-        // Place ore
-        gameState.world[y][x] = oreType;
-        placedOre++;
-        
-        // Add neighbors with decreasing probability
-        const directions = [
-            { x: x+1, y: y },
-            { x: x-1, y: y },
-            { x: x, y: y+1 },
-            { x: x, y: y-1 }
-        ];
-        
-        // Shuffle directions for more natural-looking veins
-        shuffleArray(directions);
-        
-        for (const dir of directions) {
-            // Probability decreases as vein gets larger
-            const continueProbability = 0.7 * (1 - placedOre / size);
-            if (Math.random() < continueProbability) {
-                queue.push(dir);
-            }
-        }
-    }
-}
-
-// Utility function to shuffle an array
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
 }
 
 // Place player safely above the terrain
@@ -291,19 +137,41 @@ function placePlayerSafely() {
     const surfaceY = gameState.terrainHeights[bestX];
     gameState.player.x = bestX * TILE_SIZE;
     gameState.player.y = (surfaceY - 2) * TILE_SIZE;
+    
+    // Pre-generate chunks around the player for initial view
+    preGenerateChunksAroundPlayer();
 }
 
-// Spawn enemies on the surface
+// Pre-generate chunks around the player for initial view
+function preGenerateChunksAroundPlayer() {
+    const playerChunkX = Math.floor(gameState.player.x / TILE_SIZE / CHUNK_SIZE);
+    const playerChunkY = Math.floor(gameState.player.y / TILE_SIZE / CHUNK_SIZE);
+    
+    // Generate chunks in a radius around the player
+    for (let y = playerChunkY - VISIBLE_CHUNKS_RADIUS; y <= playerChunkY + VISIBLE_CHUNKS_RADIUS; y++) {
+        for (let x = playerChunkX - VISIBLE_CHUNKS_RADIUS; x <= playerChunkX + VISIBLE_CHUNKS_RADIUS; x++) {
+            if (x >= 0 && x < Math.ceil(WORLD_WIDTH / CHUNK_SIZE) && 
+                y >= 0 && y < Math.ceil(WORLD_HEIGHT / CHUNK_SIZE)) {
+                const chunkKey = `${x},${y}`;
+                getOrGenerateChunk(chunkKey);
+            }
+        }
+    }
+}
+
+// Spawn enemies on the surface near the player
 function spawnEnemies() {
     // Clear existing enemies
     gameState.enemies = [];
     
-    // Add some enemies on the surface
+    // Add some enemies on the surface near the player
     const numEnemies = 5 + Math.floor(Math.random() * 3);
+    const playerX = Math.floor(gameState.player.x / TILE_SIZE);
     
     for (let i = 0; i < numEnemies; i++) {
-        // Find a suitable location on the surface
-        const x = Math.floor(Math.random() * WORLD_WIDTH);
+        // Find a suitable location on the surface near the player
+        const offset = Math.floor(Math.random() * 40) - 20;
+        const x = Math.max(0, Math.min(WORLD_WIDTH - 1, playerX + offset));
         const surfaceY = gameState.terrainHeights[x];
         
         gameState.enemies.push({
@@ -317,5 +185,17 @@ function spawnEnemies() {
             damage: ENEMY_TYPES.BUG.damage,
             type: 'BUG'
         });
+    }
+}
+
+// Seeded random number generator
+class SeededRandom {
+    constructor(seed) {
+        this.seed = seed;
+    }
+    
+    next() {
+        this.seed = (this.seed * 9301 + 49297) % 233280;
+        return this.seed / 233280;
     }
 } 

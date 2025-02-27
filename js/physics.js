@@ -1,52 +1,13 @@
 // Update player position and physics
-function updatePlayer() {
-    // Apply input for movement with wall sliding
-    const movingLeft = gameState.keys['ArrowLeft'] || gameState.keys['a'] || gameState.keys['A'];
-    const movingRight = gameState.keys['ArrowRight'] || gameState.keys['d'] || gameState.keys['D'];
-    const jumping = gameState.keys['ArrowUp'] || gameState.keys['w'] || gameState.keys['W'];
-    
-    // Apply more controlled movement
-    // Slower acceleration and deceleration for smoother control
-    const acceleration = 0.5;
-    const deceleration = 0.7;
-    const maxSpeed = MOVE_SPEED * 0.8; // Slightly slower max speed for better control
+function updatePlayerPosition() {
+    // Apply gravity
+    gameState.player.velocityY += GRAVITY;
     
     // Apply horizontal movement with acceleration/deceleration
-    if (movingLeft) {
-        // Gradually decrease velocity (accelerate in negative direction)
-        gameState.player.velocityX = Math.max(gameState.player.velocityX - acceleration, -maxSpeed);
-        gameState.player.facingRight = false;
-    } else if (movingRight) {
-        // Gradually increase velocity
-        gameState.player.velocityX = Math.min(gameState.player.velocityX + acceleration, maxSpeed);
-        gameState.player.facingRight = true;
-    } else {
-        // Gradually slow down when no input
-        if (gameState.player.velocityX > 0) {
-            gameState.player.velocityX = Math.max(gameState.player.velocityX - deceleration, 0);
-        } else if (gameState.player.velocityX < 0) {
-            gameState.player.velocityX = Math.min(gameState.player.velocityX + deceleration, 0);
-        }
-    }
-    
-    // Apply gentler gravity
-    const gentlerGravity = GRAVITY * 0.8;
-    gameState.player.velocityY += gentlerGravity;
-    
-    // Apply more controlled jumping
-    if (jumping && gameState.player.isGrounded) {
-        // Gentler jump with lower force
-        gameState.player.velocityY = -JUMP_FORCE * 0.7;
-        gameState.player.isGrounded = false;
-    }
+    // This is now handled in handleInput()
     
     // Improved collision detection - separate X and Y movement for better precision
     movePlayerWithCollision();
-    
-    // Add friction when on ground for better control
-    if (gameState.player.isGrounded) {
-        gameState.player.velocityX *= 0.9; // Apply friction
-    }
     
     // Check world boundaries
     if (gameState.player.x < 0) {
@@ -62,11 +23,15 @@ function updatePlayer() {
         // Reset player position
         gameState.player.y = 0;
         gameState.player.health -= 20;
-        updateHealth();
+        document.getElementById('health').textContent = `Health: ${gameState.player.health}`;
+        
+        // Game over if health depleted
+        if (gameState.player.health <= 0) {
+            alert('Game Over! Refresh to restart.');
+            gameState.player.health = 100;
+            generateWorld();
+        }
     }
-    
-    // Handle digging (mouse interaction)
-    handleDigging();
 }
 
 // Improved collision detection with separate X and Y movement
@@ -113,7 +78,7 @@ function checkHorizontalCollisions() {
         
         // Check right edge collision
         if (gameState.player.velocityX > 0) {
-            if (playerRight < WORLD_WIDTH && gameState.world[y][playerRight] !== TILE_TYPES.AIR) {
+            if (playerRight < WORLD_WIDTH && getTile(playerRight, y) !== TILE_TYPES.AIR) {
                 // Collision on right side
                 gameState.player.x = playerRight * TILE_SIZE - gameState.player.width;
                 gameState.player.velocityX = 0;
@@ -123,7 +88,7 @@ function checkHorizontalCollisions() {
         }
         // Check left edge collision
         else if (gameState.player.velocityX < 0) {
-            if (playerLeft >= 0 && gameState.world[y][playerLeft] !== TILE_TYPES.AIR) {
+            if (playerLeft >= 0 && getTile(playerLeft, y) !== TILE_TYPES.AIR) {
                 // Collision on left side
                 gameState.player.x = (playerLeft + 1) * TILE_SIZE;
                 gameState.player.velocityX = 0;
@@ -156,7 +121,7 @@ function checkVerticalCollisions() {
         
         // Check bottom edge collision (falling)
         if (gameState.player.velocityY > 0) {
-            if (playerBottom < WORLD_HEIGHT && gameState.world[playerBottom][x] !== TILE_TYPES.AIR) {
+            if (playerBottom < WORLD_HEIGHT && getTile(x, playerBottom) !== TILE_TYPES.AIR) {
                 // Collision on bottom side - player is on ground
                 gameState.player.y = playerBottom * TILE_SIZE - gameState.player.height;
                 gameState.player.velocityY = 0;
@@ -167,7 +132,7 @@ function checkVerticalCollisions() {
         }
         // Check top edge collision (jumping)
         else if (gameState.player.velocityY < 0) {
-            if (playerTop >= 0 && gameState.world[playerTop][x] !== TILE_TYPES.AIR) {
+            if (playerTop >= 0 && getTile(x, playerTop) !== TILE_TYPES.AIR) {
                 // Collision on top side - player hit ceiling
                 gameState.player.y = (playerTop + 1) * TILE_SIZE;
                 gameState.player.velocityY = 0;
@@ -201,55 +166,6 @@ function handleCornerCase(originalX, originalY) {
     }
 }
 
-// Handle digging functionality
-function handleDigging() {
-    if (gameState.mouseDown) {
-        const mouseWorldX = gameState.mouseX + gameState.camera.x;
-        const mouseWorldY = gameState.mouseY + gameState.camera.y;
-        
-        const tilePosX = Math.floor(mouseWorldX / TILE_SIZE);
-        const tilePosY = Math.floor(mouseWorldY / TILE_SIZE);
-        
-        // Check if tile is within range of player (4 tiles)
-        const playerCenterX = gameState.player.x + gameState.player.width / 2;
-        const playerCenterY = gameState.player.y + gameState.player.height / 2;
-        const tileDistanceX = Math.abs((tilePosX * TILE_SIZE + TILE_SIZE / 2) - playerCenterX);
-        const tileDistanceY = Math.abs((tilePosY * TILE_SIZE + TILE_SIZE / 2) - playerCenterY);
-        const maxDistance = 4 * TILE_SIZE;
-        
-        if (tileDistanceX <= maxDistance && tileDistanceY <= maxDistance) {
-            // Check if tile is valid and not air
-            if (
-                tilePosX >= 0 && tilePosX < WORLD_WIDTH &&
-                tilePosY >= 0 && tilePosY < WORLD_HEIGHT &&
-                gameState.world[tilePosY][tilePosX] !== TILE_TYPES.AIR
-            ) {
-                // Dig the tile (set to air)
-                gameState.world[tilePosY][tilePosX] = TILE_TYPES.AIR;
-            }
-            
-            // Check for enemy hit
-            for (let i = 0; i < gameState.enemies.length; i++) {
-                const enemy = gameState.enemies[i];
-                const enemyTilePosX = Math.floor(enemy.x / TILE_SIZE);
-                const enemyTilePosY = Math.floor(enemy.y / TILE_SIZE);
-                
-                if (tilePosX === enemyTilePosX && tilePosY === enemyTilePosY) {
-                    // Hit enemy
-                    enemy.health -= 10;
-                    
-                    if (enemy.health <= 0) {
-                        // Remove enemy
-                        gameState.enemies.splice(i, 1);
-                    }
-                    
-                    break;
-                }
-            }
-        }
-    }
-}
-
 // Update enemy positions and AI
 function updateEnemies() {
     for (let i = 0; i < gameState.enemies.length; i++) {
@@ -270,12 +186,19 @@ function updateEnemies() {
         ) {
             // Damage player
             gameState.player.health -= enemy.damage * 0.1;
-            updateHealth();
+            document.getElementById('health').textContent = `Health: ${gameState.player.health}`;
             
             // Knock player back (gentler)
             const knockbackDirection = enemy.x < gameState.player.x ? 1 : -1;
             gameState.player.velocityX = knockbackDirection * 4; // Reduced from 8
             gameState.player.velocityY = -3; // Reduced from -5
+            
+            // Game over if health depleted
+            if (gameState.player.health <= 0) {
+                alert('Game Over! Refresh to restart.');
+                gameState.player.health = 100;
+                generateWorld();
+            }
         }
         
         // Check if enemy fell off the world
@@ -305,12 +228,12 @@ function updateEnemyPosition(enemy) {
         if (y < 0 || y >= WORLD_HEIGHT) continue;
         
         if (enemy.velocityX > 0) {
-            if (enemyTileX2 < WORLD_WIDTH && gameState.world[y][enemyTileX2] !== TILE_TYPES.AIR) {
+            if (enemyTileX2 < WORLD_WIDTH && getTile(enemyTileX2, y) !== TILE_TYPES.AIR) {
                 horizontalCollision = true;
                 break;
             }
         } else if (enemy.velocityX < 0) {
-            if (enemyTileX1 >= 0 && gameState.world[y][enemyTileX1] !== TILE_TYPES.AIR) {
+            if (enemyTileX1 >= 0 && getTile(enemyTileX1, y) !== TILE_TYPES.AIR) {
                 horizontalCollision = true;
                 break;
             }
@@ -341,13 +264,13 @@ function updateEnemyPosition(enemy) {
         if (x < 0 || x >= WORLD_WIDTH) continue;
         
         if (enemy.velocityY > 0) {
-            if (updatedEnemyTileY2 < WORLD_HEIGHT && gameState.world[updatedEnemyTileY2][x] !== TILE_TYPES.AIR) {
+            if (updatedEnemyTileY2 < WORLD_HEIGHT && getTile(x, updatedEnemyTileY2) !== TILE_TYPES.AIR) {
                 verticalCollision = true;
                 isGrounded = true;
                 break;
             }
         } else if (enemy.velocityY < 0) {
-            if (updatedEnemyTileY1 >= 0 && gameState.world[updatedEnemyTileY1][x] !== TILE_TYPES.AIR) {
+            if (updatedEnemyTileY1 >= 0 && getTile(x, updatedEnemyTileY1) !== TILE_TYPES.AIR) {
                 verticalCollision = true;
                 break;
             }
@@ -374,7 +297,7 @@ function updateEnemyPosition(enemy) {
             checkX >= 0 && checkX < WORLD_WIDTH &&
             updatedEnemyTileY2 + 1 < WORLD_HEIGHT
         ) {
-            if (gameState.world[updatedEnemyTileY2 + 1][checkX] === TILE_TYPES.AIR) {
+            if (getTile(checkX, updatedEnemyTileY2 + 1) === TILE_TYPES.AIR) {
                 // No ground ahead, reverse direction
                 enemy.velocityX = -enemy.velocityX;
             }
@@ -384,23 +307,23 @@ function updateEnemyPosition(enemy) {
 
 // Update camera position to follow player
 function updateCamera() {
-    const targetX = gameState.player.x + gameState.player.width / 2 - canvas.width / 2;
-    const targetY = gameState.player.y + gameState.player.height / 2 - canvas.height / 2;
+    const targetX = gameState.player.x + gameState.player.width / 2 - gameState.canvas.width / 2;
+    const targetY = gameState.player.y + gameState.player.height / 2 - gameState.canvas.height / 2;
     
     // Smoother camera movement with lerp (linear interpolation)
     gameState.camera.x = gameState.camera.x + (targetX - gameState.camera.x) * 0.1;
     gameState.camera.y = gameState.camera.y + (targetY - gameState.camera.y) * 0.1;
     
     // Clamp camera to world boundaries
-    gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH * TILE_SIZE - canvas.width));
-    gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - canvas.height));
+    gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH * TILE_SIZE - gameState.canvas.width));
+    gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - gameState.canvas.height));
 }
 
 // Update health display
 function updateHealth() {
     // Ensure health doesn't go below 0
     gameState.player.health = Math.max(0, gameState.player.health);
-    healthDisplay.textContent = Math.ceil(gameState.player.health);
+    document.getElementById('health').textContent = `Health: ${Math.ceil(gameState.player.health)}`;
     
     // Check for game over
     if (gameState.player.health <= 0) {
