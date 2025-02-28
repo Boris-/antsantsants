@@ -184,7 +184,9 @@ function handleDigging() {
     const tileY = Math.floor(mouseWorldY / TILE_SIZE);
     
     // Debug output
-    console.log(`Mouse: (${mouseX}, ${mouseY}), World: (${mouseWorldX}, ${mouseWorldY}), Tile: (${tileX}, ${tileY})`);
+    if (gameState.debug) {
+        console.log(`Mouse: (${mouseX}, ${mouseY}), World: (${mouseWorldX}, ${mouseWorldY}), Tile: (${tileX}, ${tileY})`);
+    }
     
     // Calculate distance from player to mouse position
     const playerCenterX = gameState.player.x + gameState.player.width / 2;
@@ -205,7 +207,9 @@ function handleDigging() {
         // Check if tile is diggable
         if (tile === TILE_TYPES.DIRT || tile === TILE_TYPES.GRASS || 
             tile === TILE_TYPES.STONE || tile === TILE_TYPES.ORE || 
-            tile === TILE_TYPES.SAND) {
+            tile === TILE_TYPES.SAND || tile === TILE_TYPES.COAL ||
+            tile === TILE_TYPES.IRON || tile === TILE_TYPES.GOLD ||
+            tile === TILE_TYPES.DIAMOND) {
             
             // Add to inventory based on tile type
             if (tile === TILE_TYPES.DIRT || tile === TILE_TYPES.GRASS) {
@@ -215,6 +219,18 @@ function handleDigging() {
             } else if (tile === TILE_TYPES.ORE) {
                 gameState.player.inventory.ore++;
                 gameState.score += 10; // Bonus points for ore
+            } else if (tile === TILE_TYPES.COAL) {
+                gameState.player.inventory.coal++;
+                gameState.score += 15; // Bonus points for coal
+            } else if (tile === TILE_TYPES.IRON) {
+                gameState.player.inventory.iron++;
+                gameState.score += 25; // Bonus points for iron
+            } else if (tile === TILE_TYPES.GOLD) {
+                gameState.player.inventory.gold++;
+                gameState.score += 50; // Bonus points for gold
+            } else if (tile === TILE_TYPES.DIAMOND) {
+                gameState.player.inventory.diamond++;
+                gameState.score += 100; // Bonus points for diamond
             }
             
             // Remove the tile
@@ -249,12 +265,12 @@ function handleDigging() {
                 // Remove enemy if health depleted
                 if (enemy.health <= 0) {
                     gameState.enemies.splice(i, 1);
-                    gameState.score += 50; // Points for killing enemy
+                    i--;
+                    
+                    // Add score for killing enemy
+                    gameState.score += 25;
                     updateScoreDisplay();
-                    i--; // Adjust index after removal
                 }
-                
-                break;
             }
         }
     }
@@ -262,18 +278,52 @@ function handleDigging() {
 
 // Update inventory display
 function updateInventoryDisplay() {
-    // Ensure inventory object exists
-    if (!gameState.player.inventory) {
-        gameState.player.inventory = {
-            dirt: 0,
-            stone: 0,
-            ore: 0
-        };
+    document.getElementById('dirt-count').textContent = `Dirt: ${gameState.player.inventory.dirt}`;
+    document.getElementById('stone-count').textContent = `Stone: ${gameState.player.inventory.stone}`;
+    document.getElementById('ore-count').textContent = `Ore: ${gameState.player.inventory.ore}`;
+    
+    // Add new ore types to UI if they exist
+    const inventory = document.getElementById('inventory');
+    
+    // Check if coal count element exists, if not create it
+    if (!document.getElementById('coal-count')) {
+        const coalCount = document.createElement('span');
+        coalCount.id = 'coal-count';
+        coalCount.textContent = `Coal: ${gameState.player.inventory.coal || 0}`;
+        inventory.appendChild(coalCount);
+    } else {
+        document.getElementById('coal-count').textContent = `Coal: ${gameState.player.inventory.coal || 0}`;
     }
     
-    document.getElementById('dirt-count').textContent = `Dirt: ${gameState.player.inventory.dirt || 0}`;
-    document.getElementById('stone-count').textContent = `Stone: ${gameState.player.inventory.stone || 0}`;
-    document.getElementById('ore-count').textContent = `Ore: ${gameState.player.inventory.ore || 0}`;
+    // Check if iron count element exists, if not create it
+    if (!document.getElementById('iron-count')) {
+        const ironCount = document.createElement('span');
+        ironCount.id = 'iron-count';
+        ironCount.textContent = `Iron: ${gameState.player.inventory.iron || 0}`;
+        inventory.appendChild(ironCount);
+    } else {
+        document.getElementById('iron-count').textContent = `Iron: ${gameState.player.inventory.iron || 0}`;
+    }
+    
+    // Check if gold count element exists, if not create it
+    if (!document.getElementById('gold-count')) {
+        const goldCount = document.createElement('span');
+        goldCount.id = 'gold-count';
+        goldCount.textContent = `Gold: ${gameState.player.inventory.gold || 0}`;
+        inventory.appendChild(goldCount);
+    } else {
+        document.getElementById('gold-count').textContent = `Gold: ${gameState.player.inventory.gold || 0}`;
+    }
+    
+    // Check if diamond count element exists, if not create it
+    if (!document.getElementById('diamond-count')) {
+        const diamondCount = document.createElement('span');
+        diamondCount.id = 'diamond-count';
+        diamondCount.textContent = `Diamond: ${gameState.player.inventory.diamond || 0}`;
+        inventory.appendChild(diamondCount);
+    } else {
+        document.getElementById('diamond-count').textContent = `Diamond: ${gameState.player.inventory.diamond || 0}`;
+    }
 }
 
 // Update score display

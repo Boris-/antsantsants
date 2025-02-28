@@ -1,8 +1,8 @@
 // Game constants
 const TILE_SIZE = 32;
 const CHUNK_SIZE = 16;
-const WORLD_WIDTH = 1000;
-const WORLD_HEIGHT = 1000;
+const WORLD_WIDTH = 2000;
+const WORLD_HEIGHT = 2000;
 const GRAVITY = 0.4;
 const ACCELERATION = 0.5;
 const DECELERATION = 0.3;
@@ -21,7 +21,28 @@ const TILE_TYPES = {
     GRASS: 3,
     SAND: 4,
     ORE: 5,
-    BEDROCK: 6
+    BEDROCK: 6,
+    COAL: 7,      // Ore type
+    IRON: 8,      // Ore type
+    GOLD: 9,      // Ore type
+    DIAMOND: 10,  // Ore type
+    WOOD: 11,     // Tree trunk
+    LEAVES: 12,   // Tree leaves
+    BUSH: 13,     // Bush/shrub
+    FLOWER: 14,   // Decorative flower
+    TALL_GRASS: 15, // Tall grass
+    CACTUS: 16,   // Desert cactus
+    SNOW: 17,     // Snow block
+    MUSHROOM: 18, // Forest mushroom
+    WATER: 19     // Water block
+};
+
+// Biome types (for easier reference)
+const BIOME_TYPES = {
+    PLAINS: 'Plains',
+    FOREST: 'Forest',
+    DESERT: 'Desert',
+    MOUNTAINS: 'Mountains'
 };
 
 // Enemy types

@@ -1,11 +1,13 @@
 // Game state object
 const gameState = {
     // World properties
-    worldWidth: 1000,
-    worldHeight: 1000,
-    chunkSize: 16,
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
+    chunkSize: CHUNK_SIZE,
     chunks: {}, // Store loaded chunks
     terrainHeights: [], // Store height of terrain at each x position
+    biomeMap: [], // Store biome at each x position
+    biomes: {}, // Biome definitions
     
     // Player properties
     player: {
@@ -22,7 +24,11 @@ const gameState = {
         inventory: {
             dirt: 0,
             stone: 0,
-            ore: 0
+            ore: 0,
+            coal: 0,
+            iron: 0,
+            gold: 0,
+            diamond: 0
         }
     },
     
@@ -41,8 +47,8 @@ const gameState = {
     
     // Game properties
     enemies: [],
-    gravity: 0.4,
-    tileSize: 32,
+    gravity: GRAVITY,
+    tileSize: TILE_SIZE,
     canvas: null,
     ctx: null,
     lastFrameTime: 0,
@@ -235,6 +241,9 @@ function loadGame() {
         
         // Load world seed and regenerate terrain heights
         gameState.worldSeed = saveData.worldSeed;
+        
+        // Initialize biomes and generate terrain heights
+        initializeBiomes();
         generateTerrainHeights();
         
         // Load player data
@@ -246,29 +255,85 @@ function loadGame() {
         gameState.player.inventory = {
             dirt: (saveData.player.inventory && saveData.player.inventory.dirt) || 0,
             stone: (saveData.player.inventory && saveData.player.inventory.stone) || 0,
-            ore: (saveData.player.inventory && saveData.player.inventory.ore) || 0
+            ore: (saveData.player.inventory && saveData.player.inventory.ore) || 0,
+            coal: (saveData.player.inventory && saveData.player.inventory.coal) || 0,
+            iron: (saveData.player.inventory && saveData.player.inventory.iron) || 0,
+            gold: (saveData.player.inventory && saveData.player.inventory.gold) || 0,
+            diamond: (saveData.player.inventory && saveData.player.inventory.diamond) || 0
         };
         
         // Load score
-        gameState.score = saveData.score;
+        gameState.score = saveData.score || 0;
         
-        // Load chunks
-        gameState.chunks = saveData.chunks || {};
+        // Load saved chunks
+        for (const chunkKey in saveData.chunks) {
+            gameState.chunks[chunkKey] = saveData.chunks[chunkKey];
+        }
         
-        // Update camera position
-        gameState.camera.x = gameState.player.x - gameState.canvas.width / 2;
-        gameState.camera.y = gameState.player.y - gameState.canvas.height / 2;
-        gameState.camera.targetX = gameState.camera.x;
-        gameState.camera.targetY = gameState.camera.y;
-        
-        gameState.hasUnsavedChanges = false;
-        gameState.lastSaveTime = Date.now();
+        // Update UI
+        updateScoreDisplay();
+        updateInventoryDisplay();
         
         return true;
     } catch (e) {
         console.error('Failed to load game:', e);
         return false;
     }
+}
+
+// Update inventory display
+function updateInventoryDisplay() {
+    document.getElementById('dirt-count').textContent = `Dirt: ${gameState.player.inventory.dirt}`;
+    document.getElementById('stone-count').textContent = `Stone: ${gameState.player.inventory.stone}`;
+    document.getElementById('ore-count').textContent = `Ore: ${gameState.player.inventory.ore}`;
+    
+    // Add new ore types to UI if they exist
+    const inventory = document.getElementById('inventory');
+    
+    // Check if coal count element exists, if not create it
+    if (!document.getElementById('coal-count')) {
+        const coalCount = document.createElement('span');
+        coalCount.id = 'coal-count';
+        coalCount.textContent = `Coal: ${gameState.player.inventory.coal || 0}`;
+        inventory.appendChild(coalCount);
+    } else {
+        document.getElementById('coal-count').textContent = `Coal: ${gameState.player.inventory.coal || 0}`;
+    }
+    
+    // Check if iron count element exists, if not create it
+    if (!document.getElementById('iron-count')) {
+        const ironCount = document.createElement('span');
+        ironCount.id = 'iron-count';
+        ironCount.textContent = `Iron: ${gameState.player.inventory.iron || 0}`;
+        inventory.appendChild(ironCount);
+    } else {
+        document.getElementById('iron-count').textContent = `Iron: ${gameState.player.inventory.iron || 0}`;
+    }
+    
+    // Check if gold count element exists, if not create it
+    if (!document.getElementById('gold-count')) {
+        const goldCount = document.createElement('span');
+        goldCount.id = 'gold-count';
+        goldCount.textContent = `Gold: ${gameState.player.inventory.gold || 0}`;
+        inventory.appendChild(goldCount);
+    } else {
+        document.getElementById('gold-count').textContent = `Gold: ${gameState.player.inventory.gold || 0}`;
+    }
+    
+    // Check if diamond count element exists, if not create it
+    if (!document.getElementById('diamond-count')) {
+        const diamondCount = document.createElement('span');
+        diamondCount.id = 'diamond-count';
+        diamondCount.textContent = `Diamond: ${gameState.player.inventory.diamond || 0}`;
+        inventory.appendChild(diamondCount);
+    } else {
+        document.getElementById('diamond-count').textContent = `Diamond: ${gameState.player.inventory.diamond || 0}`;
+    }
+}
+
+// Update score display
+function updateScoreDisplay() {
+    document.getElementById('score').textContent = `Score: ${gameState.score}`;
 }
 
 // Set up event listeners
