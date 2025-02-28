@@ -43,6 +43,14 @@ function setupEventListeners() {
     gameState.canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
         
+        // Set zooming flag to disable particle animations
+        gameState.isZooming = true;
+        
+        // Clear any existing zoom timeout
+        if (gameState.zoomTimeout) {
+            clearTimeout(gameState.zoomTimeout);
+        }
+        
         // Determine zoom direction
         const zoomAmount = e.deltaY > 0 ? -0.1 : 0.1;
         
@@ -77,6 +85,11 @@ function setupEventListeners() {
         
         // Show zoom level indicator
         showZoomIndicator();
+        
+        // Set a timeout to reset the zooming flag after zooming stops
+        gameState.zoomTimeout = setTimeout(() => {
+            gameState.isZooming = false;
+        }, 500); // 500ms delay
     });
     
     // Handle window resize
@@ -369,21 +382,43 @@ function showZoomIndicator() {
     if (!zoomIndicator) {
         zoomIndicator = document.createElement('div');
         zoomIndicator.id = 'zoom-indicator';
-        document.getElementById('game-container').appendChild(zoomIndicator);
+        zoomIndicator.style.position = 'absolute';
+        zoomIndicator.style.top = '50px';
+        zoomIndicator.style.right = '20px';
+        zoomIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        zoomIndicator.style.color = 'white';
+        zoomIndicator.style.padding = '8px 12px';
+        zoomIndicator.style.borderRadius = '4px';
+        zoomIndicator.style.fontFamily = 'Arial, sans-serif';
+        zoomIndicator.style.fontSize = '14px';
+        zoomIndicator.style.fontWeight = 'bold';
+        zoomIndicator.style.zIndex = '1000';
+        zoomIndicator.style.transition = 'opacity 0.3s';
+        
+        // Add to game container or body if container not found
+        const container = document.getElementById('game-container') || document.body;
+        container.appendChild(zoomIndicator);
     }
     
     // Update zoom level text
     zoomIndicator.textContent = `Zoom: ${Math.round(gameState.zoom * 100)}%`;
     
-    // Show the indicator
+    // Make sure it's visible
     zoomIndicator.style.opacity = '1';
     zoomIndicator.style.display = 'block';
     
-    // Hide after a delay
+    // Clear any existing timeout
     clearTimeout(window.zoomIndicatorTimeout);
+    
+    // Hide after 2 seconds
     window.zoomIndicatorTimeout = setTimeout(() => {
         zoomIndicator.style.opacity = '0';
-    }, 1500);
+        
+        // Remove from DOM after fade out
+        setTimeout(() => {
+            zoomIndicator.style.display = 'none';
+        }, 300);
+    }, 2000);
 }
 
 // Toggle debug mode

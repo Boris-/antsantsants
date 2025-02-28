@@ -35,6 +35,11 @@ function drawWorld() {
     // Draw enemies directly in world coordinates
     drawEnemiesDirect();
     
+    // Draw particles directly in world coordinates, but only if not zooming
+    if (!gameState.isZooming && typeof drawParticlesDirect === 'function') {
+        drawParticlesDirect();
+    }
+    
     // Restore context to original state
     gameState.ctx.restore();
     
@@ -553,107 +558,11 @@ function unloadDistantChunks(startChunkX, endChunkX, startChunkY, endChunkY) {
 
 // Draw player (ant)
 function drawPlayer() {
-    // Apply zoom transformation
-    gameState.ctx.save();
-    gameState.ctx.scale(gameState.zoom, gameState.zoom);
-    
-    // Body
-    gameState.ctx.fillStyle = '#8B4513';
-    
-    const playerScreenX = gameState.player.x - gameState.camera.x / gameState.zoom;
-    const playerScreenY = gameState.player.y - gameState.camera.y / gameState.zoom;
-    
-    // Ant body (oval)
-    gameState.ctx.beginPath();
-    gameState.ctx.ellipse(
-        playerScreenX + gameState.player.width / 2,
-        playerScreenY + gameState.player.height / 2,
-        gameState.player.width / 2,
-        gameState.player.height / 3,
-        0, 0, Math.PI * 2
-    );
-    gameState.ctx.fill();
-    
-    // Head
-    gameState.ctx.beginPath();
-    gameState.ctx.arc(
-        playerScreenX + (gameState.player.facingRight ? gameState.player.width * 0.75 : gameState.player.width * 0.25),
-        playerScreenY + gameState.player.height / 2,
-        gameState.player.width / 4,
-        0, Math.PI * 2
-    );
-    gameState.ctx.fill();
-    
-    // Eyes
-    gameState.ctx.fillStyle = '#FFFFFF';
-    const eyeX = playerScreenX + (gameState.player.facingRight ? gameState.player.width * 0.85 : gameState.player.width * 0.15);
-    gameState.ctx.beginPath();
-    gameState.ctx.arc(
-        eyeX,
-        playerScreenY + gameState.player.height * 0.4,
-        2,
-        0, Math.PI * 2
-    );
-    gameState.ctx.fill();
-    
-    // Legs
-    gameState.ctx.strokeStyle = '#8B4513';
-    gameState.ctx.lineWidth = 2;
-    
-    // Draw 3 legs on each side
-    for (let i = 0; i < 3; i++) {
-        const legOffsetX = gameState.player.width * 0.2 + i * (gameState.player.width * 0.2);
-        
-        // Left legs
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            playerScreenX + legOffsetX,
-            playerScreenY + gameState.player.height / 2
-        );
-        gameState.ctx.lineTo(
-            playerScreenX + legOffsetX - 5,
-            playerScreenY + gameState.player.height * 0.8
-        );
-        gameState.ctx.stroke();
-        
-        // Right legs
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            playerScreenX + legOffsetX,
-            playerScreenY + gameState.player.height / 2
-        );
-        gameState.ctx.lineTo(
-            playerScreenX + legOffsetX + 5,
-            playerScreenY + gameState.player.height * 0.8
-        );
-        gameState.ctx.stroke();
+    // This function is now just a wrapper for drawAnt
+    // which is defined in game.js
+    if (typeof drawAnt === 'function') {
+        drawAnt();
     }
-    
-    // Antennae
-    gameState.ctx.beginPath();
-    gameState.ctx.moveTo(
-        playerScreenX + (gameState.player.facingRight ? gameState.player.width * 0.8 : gameState.player.width * 0.2),
-        playerScreenY + gameState.player.height * 0.3
-    );
-    gameState.ctx.lineTo(
-        playerScreenX + (gameState.player.facingRight ? gameState.player.width * 0.9 : gameState.player.width * 0.1),
-        playerScreenY + gameState.player.height * 0.15
-    );
-    gameState.ctx.stroke();
-    
-    gameState.ctx.beginPath();
-    gameState.ctx.moveTo(
-        playerScreenX + (gameState.player.facingRight ? gameState.player.width * 0.75 : gameState.player.width * 0.25),
-        playerScreenY + gameState.player.height * 0.3
-    );
-    gameState.ctx.lineTo(
-        playerScreenX + (gameState.player.facingRight ? gameState.player.width * 0.85 : gameState.player.width * 0.15),
-        playerScreenY + gameState.player.height * 0.15
-    );
-    gameState.ctx.stroke();
-    
-    // Restore context
-    gameState.ctx.restore();
 }
 
 // Draw enemies
@@ -784,113 +693,58 @@ function drawMinimap() {
 
 // Draw player directly in world coordinates (used when ctx is already transformed)
 function drawPlayerDirect() {
-    // Body
-    gameState.ctx.fillStyle = '#8B4513';
-    
-    // Ant body (oval)
-    gameState.ctx.beginPath();
-    gameState.ctx.ellipse(
-        gameState.player.x + gameState.player.width / 2,
-        gameState.player.y + gameState.player.height / 2,
-        gameState.player.width / 2,
-        gameState.player.height / 3,
-        0, 0, Math.PI * 2
-    );
-    gameState.ctx.fill();
-    
-    // Head
-    gameState.ctx.beginPath();
-    gameState.ctx.arc(
-        gameState.player.x + (gameState.player.facingRight ? gameState.player.width * 0.75 : gameState.player.width * 0.25),
-        gameState.player.y + gameState.player.height / 2,
-        gameState.player.width / 4,
-        0, Math.PI * 2
-    );
-    gameState.ctx.fill();
-    
-    // Eyes
-    gameState.ctx.fillStyle = '#FFFFFF';
-    const eyeX = gameState.player.x + (gameState.player.facingRight ? gameState.player.width * 0.85 : gameState.player.width * 0.15);
-    gameState.ctx.beginPath();
-    gameState.ctx.arc(
-        eyeX,
-        gameState.player.y + gameState.player.height * 0.4,
-        2,
-        0, Math.PI * 2
-    );
-    gameState.ctx.fill();
-    
-    // Legs
-    gameState.ctx.strokeStyle = '#8B4513';
-    gameState.ctx.lineWidth = 2;
-    
-    // Draw 3 legs on each side
-    for (let i = 0; i < 3; i++) {
-        const legOffsetX = gameState.player.width * 0.2 + i * (gameState.player.width * 0.2);
+    // Check if we have the direct drawing function
+    if (typeof drawAntDirect === 'function') {
+        // Use the direct drawing function that doesn't apply zoom
+        drawAntDirect();
+    } else {
+        // Fallback to the original method
+        // Save current transformation state
+        gameState.ctx.save();
         
-        // Left legs
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            gameState.player.x + legOffsetX,
-            gameState.player.y + gameState.player.height / 2
-        );
-        gameState.ctx.lineTo(
-            gameState.player.x + legOffsetX - 5,
-            gameState.player.y + gameState.player.height * 0.8
-        );
-        gameState.ctx.stroke();
+        // Temporarily adjust camera to work with drawAnt
+        const originalCameraX = gameState.camera.x;
+        const originalCameraY = gameState.camera.y;
         
-        // Right legs
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            gameState.player.x + legOffsetX,
-            gameState.player.y + gameState.player.height / 2
-        );
-        gameState.ctx.lineTo(
-            gameState.player.x + legOffsetX + 5,
-            gameState.player.y + gameState.player.height * 0.8
-        );
-        gameState.ctx.stroke();
+        // Set camera to 0 since context is already transformed
+        gameState.camera.x = 0;
+        gameState.camera.y = 0;
+        
+        // Draw the ant using the main function
+        if (typeof drawAnt === 'function') {
+            // Temporarily set zoom to 1 to avoid double-zooming
+            const originalZoom = gameState.zoom;
+            gameState.zoom = 1;
+            
+            drawAnt();
+            
+            // Restore zoom
+            gameState.zoom = originalZoom;
+        }
+        
+        // Restore camera position
+        gameState.camera.x = originalCameraX;
+        gameState.camera.y = originalCameraY;
+        
+        // Restore transformation state
+        gameState.ctx.restore();
     }
-    
-    // Antennae
-    gameState.ctx.beginPath();
-    gameState.ctx.moveTo(
-        gameState.player.x + (gameState.player.facingRight ? gameState.player.width * 0.8 : gameState.player.width * 0.2),
-        gameState.player.y + gameState.player.height * 0.3
-    );
-    gameState.ctx.lineTo(
-        gameState.player.x + (gameState.player.facingRight ? gameState.player.width * 0.9 : gameState.player.width * 0.1),
-        gameState.player.y + gameState.player.height * 0.15
-    );
-    gameState.ctx.stroke();
-    
-    gameState.ctx.beginPath();
-    gameState.ctx.moveTo(
-        gameState.player.x + (gameState.player.facingRight ? gameState.player.width * 0.75 : gameState.player.width * 0.25),
-        gameState.player.y + gameState.player.height * 0.3
-    );
-    gameState.ctx.lineTo(
-        gameState.player.x + (gameState.player.facingRight ? gameState.player.width * 0.85 : gameState.player.width * 0.15),
-        gameState.player.y + gameState.player.height * 0.15
-    );
-    gameState.ctx.stroke();
 }
 
 // Draw enemies directly in world coordinates (used when ctx is already transformed)
 function drawEnemiesDirect() {
     for (const enemy of gameState.enemies) {
         // Only draw if on screen (rough check)
-        const screenX = (enemy.x - gameState.camera.x) * gameState.zoom;
-        const screenY = (enemy.y - gameState.camera.y) * gameState.zoom;
-        const enemyScreenWidth = enemy.width * gameState.zoom;
-        const enemyScreenHeight = enemy.height * gameState.zoom;
+        // Since context is already transformed, we don't need to apply zoom here
+        const enemyX = enemy.x;
+        const enemyY = enemy.y;
         
+        // Check if enemy is visible in the current view
         if (
-            screenX > -enemyScreenWidth &&
-            screenX < gameState.canvas.width &&
-            screenY > -enemyScreenHeight &&
-            screenY < gameState.canvas.height
+            enemyX + enemy.width > gameState.camera.x &&
+            enemyX < gameState.camera.x + (gameState.canvas.width / gameState.zoom) &&
+            enemyY + enemy.height > gameState.camera.y &&
+            enemyY < gameState.camera.y + (gameState.canvas.height / gameState.zoom)
         ) {
             // Bug enemy
             gameState.ctx.fillStyle = '#FF0000';
@@ -901,30 +755,30 @@ function drawEnemiesDirect() {
                 enemy.x + enemy.width / 2,
                 enemy.y + enemy.height / 2,
                 enemy.width / 2,
-                enemy.height / 3,
+                enemy.height / 2,
                 0, 0, Math.PI * 2
-            );
-            gameState.ctx.fill();
-            
-            // Head
-            const facingRight = enemy.velocityX > 0;
-            gameState.ctx.beginPath();
-            gameState.ctx.arc(
-                enemy.x + (facingRight ? enemy.width * 0.75 : enemy.width * 0.25),
-                enemy.y + enemy.height / 2,
-                enemy.width / 4,
-                0, Math.PI * 2
             );
             gameState.ctx.fill();
             
             // Eyes
             gameState.ctx.fillStyle = '#FFFFFF';
-            const eyeX = enemy.x + (facingRight ? enemy.width * 0.85 : enemy.width * 0.15);
+            
+            // Left eye
             gameState.ctx.beginPath();
             gameState.ctx.arc(
-                eyeX,
-                enemy.y + enemy.height * 0.4,
-                2,
+                enemy.x + enemy.width * 0.3,
+                enemy.y + enemy.height * 0.3,
+                enemy.width * 0.1,
+                0, Math.PI * 2
+            );
+            gameState.ctx.fill();
+            
+            // Right eye
+            gameState.ctx.beginPath();
+            gameState.ctx.arc(
+                enemy.x + enemy.width * 0.7,
+                enemy.y + enemy.height * 0.3,
+                enemy.width * 0.1,
                 0, Math.PI * 2
             );
             gameState.ctx.fill();

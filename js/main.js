@@ -65,6 +65,9 @@ function renderGame() {
     drawUI();
 }
 
+// Expose renderGame to the window object
+window.mainRenderGame = renderGame;
+
 // Update camera position to follow player
 function updateCamera() {
     // Center camera on player

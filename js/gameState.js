@@ -44,6 +44,8 @@ const gameState = {
     zoom: 1.0,
     minZoom: 0.5,
     maxZoom: 2.0,
+    isZooming: false,
+    zoomTimeout: null,
     
     // Game properties
     enemies: [],
