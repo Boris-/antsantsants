@@ -1,22 +1,17 @@
 // Game constants
 const TILE_SIZE = 32;
+const CHUNK_SIZE = 16;
 const WORLD_WIDTH = 1000;
 const WORLD_HEIGHT = 1000;
 const GRAVITY = 0.4;
-const JUMP_FORCE = 8;
-const MOVE_SPEED = 3.5;
-const MAX_SPEED = 6;
 const ACCELERATION = 0.5;
-const DECELERATION = 0.8;
+const DECELERATION = 0.3;
 const FRICTION = 0.9;
+const MAX_SPEED = 5;
+const JUMP_FORCE = 10;
 const CAMERA_LERP = 0.1;
-
-// Chunk system constants for efficient rendering
-const CHUNK_SIZE = 16; // Size of each chunk in tiles
-const VISIBLE_CHUNKS_RADIUS = 2; // How many chunks to render around the player
-
-// Auto-save settings
-const AUTO_SAVE_INTERVAL = 60000; // 1 minute in milliseconds
+const VISIBLE_CHUNKS_RADIUS = 2;
+const AUTO_SAVE_INTERVAL = 60000; // Auto-save every minute
 
 // Tile types
 const TILE_TYPES = {
@@ -24,9 +19,9 @@ const TILE_TYPES = {
     DIRT: 1,
     STONE: 2,
     GRASS: 3,
-    ORE: 4,
-    BEDROCK: 5,
-    SAND: 6
+    SAND: 4,
+    ORE: 5,
+    BEDROCK: 6
 };
 
 // Enemy types

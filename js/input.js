@@ -3,6 +3,11 @@ function setupEventListeners() {
     // Keyboard events
     window.addEventListener('keydown', (e) => {
         gameState.keys[e.code] = true;
+        
+        // Toggle debug mode with F3
+        if (e.code === 'F3') {
+            toggleDebugMode();
+        }
     });
     
     window.addEventListener('keyup', (e) => {
@@ -16,12 +21,62 @@ function setupEventListeners() {
         gameState.mouseY = e.clientY - rect.top;
     });
     
-    gameState.canvas.addEventListener('mousedown', () => {
+    gameState.canvas.addEventListener('mousedown', (e) => {
         gameState.mouseDown = true;
+        
+        // Update mouse position before handling digging
+        const rect = gameState.canvas.getBoundingClientRect();
+        gameState.mouseX = e.clientX - rect.left;
+        gameState.mouseY = e.clientY - rect.top;
+        
+        // Only call handleDigging if mouse is down
+        if (gameState.mouseDown) {
+            handleDigging();
+        }
     });
     
     gameState.canvas.addEventListener('mouseup', () => {
         gameState.mouseDown = false;
+    });
+    
+    // Mouse wheel for zooming
+    gameState.canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        
+        // Determine zoom direction
+        const zoomAmount = e.deltaY > 0 ? -0.1 : 0.1;
+        
+        // Store old zoom for calculations
+        const oldZoom = gameState.zoom;
+        
+        // Calculate new zoom level
+        const newZoom = Math.max(
+            gameState.minZoom, 
+            Math.min(gameState.maxZoom, gameState.zoom + zoomAmount)
+        );
+        
+        // Get mouse position relative to canvas
+        const rect = gameState.canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        // Calculate world coordinates under the mouse
+        const worldX = gameState.camera.x + (mouseX / oldZoom);
+        const worldY = gameState.camera.y + (mouseY / oldZoom);
+        
+        // Apply zoom
+        gameState.zoom = newZoom;
+        
+        // Adjust camera to keep the world point under the mouse fixed
+        gameState.camera.x = worldX - (mouseX / newZoom);
+        gameState.camera.y = worldY - (mouseY / newZoom);
+        
+        // Update camera target to match new position
+        gameState.camera.targetX = gameState.camera.x;
+        gameState.camera.targetY = gameState.camera.y;
+        
+        // Show zoom level indicator
+        showZoomIndicator();
     });
     
     // Handle window resize
@@ -112,25 +167,40 @@ function handleInput() {
 
 // Handle digging and attacking
 function handleDigging() {
-    // Convert mouse position to world coordinates
-    const mouseWorldX = Math.floor((gameState.mouseX + gameState.camera.x) / gameState.tileSize);
-    const mouseWorldY = Math.floor((gameState.mouseY + gameState.camera.y) / gameState.tileSize);
+    // Only proceed if mouse is down
+    if (!gameState.mouseDown) return;
+    
+    // Get mouse position relative to canvas
+    const rect = gameState.canvas.getBoundingClientRect();
+    const mouseX = gameState.mouseX;
+    const mouseY = gameState.mouseY;
+    
+    // Calculate mouse position in world coordinates (accounting for zoom)
+    const mouseWorldX = gameState.camera.x + (mouseX / gameState.zoom);
+    const mouseWorldY = gameState.camera.y + (mouseY / gameState.zoom);
+    
+    // Convert to tile coordinates
+    const tileX = Math.floor(mouseWorldX / TILE_SIZE);
+    const tileY = Math.floor(mouseWorldY / TILE_SIZE);
+    
+    // Debug output
+    console.log(`Mouse: (${mouseX}, ${mouseY}), World: (${mouseWorldX}, ${mouseWorldY}), Tile: (${tileX}, ${tileY})`);
     
     // Calculate distance from player to mouse position
     const playerCenterX = gameState.player.x + gameState.player.width / 2;
     const playerCenterY = gameState.player.y + gameState.player.height / 2;
-    const mouseCenterX = mouseWorldX * gameState.tileSize + gameState.tileSize / 2;
-    const mouseCenterY = mouseWorldY * gameState.tileSize + gameState.tileSize / 2;
+    const tileCenterX = tileX * TILE_SIZE + TILE_SIZE / 2;
+    const tileCenterY = tileY * TILE_SIZE + TILE_SIZE / 2;
     
     const distance = Math.sqrt(
-        Math.pow(playerCenterX - mouseCenterX, 2) + 
-        Math.pow(playerCenterY - mouseCenterY, 2)
+        Math.pow(playerCenterX - tileCenterX, 2) + 
+        Math.pow(playerCenterY - tileCenterY, 2)
     );
     
     // Only allow digging within a certain range
     const maxDigDistance = 100;
     if (distance <= maxDigDistance) {
-        const tile = getTile(mouseWorldX, mouseWorldY);
+        const tile = getTile(tileX, tileY);
         
         // Check if tile is diggable
         if (tile === TILE_TYPES.DIRT || tile === TILE_TYPES.GRASS || 
@@ -148,19 +218,23 @@ function handleDigging() {
             }
             
             // Remove the tile
-            setTile(mouseWorldX, mouseWorldY, TILE_TYPES.AIR);
+            setTile(tileX, tileY, TILE_TYPES.AIR);
             
             // Update UI
             updateInventoryDisplay();
+            updateScoreDisplay();
+            
+            // Mark world as having unsaved changes
+            gameState.hasUnsavedChanges = true;
         }
         
         // Check for enemies
         for (let i = 0; i < gameState.enemies.length; i++) {
             const enemy = gameState.enemies[i];
-            const enemyTileX = Math.floor(enemy.x / gameState.tileSize);
-            const enemyTileY = Math.floor(enemy.y / gameState.tileSize);
+            const enemyTileX = Math.floor(enemy.x / TILE_SIZE);
+            const enemyTileY = Math.floor(enemy.y / TILE_SIZE);
             
-            if (enemyTileX === mouseWorldX && enemyTileY === mouseWorldY) {
+            if (enemyTileX === tileX && enemyTileY === tileY) {
                 // Damage enemy
                 enemy.health -= 10;
                 
@@ -235,4 +309,106 @@ function showNotification(message, duration = 2000) {
     setTimeout(() => {
         notification.style.opacity = '0';
     }, duration);
+}
+
+// Show zoom level indicator
+function showZoomIndicator() {
+    // Create or get zoom indicator element
+    let zoomIndicator = document.getElementById('zoom-indicator');
+    
+    if (!zoomIndicator) {
+        zoomIndicator = document.createElement('div');
+        zoomIndicator.id = 'zoom-indicator';
+        document.getElementById('game-container').appendChild(zoomIndicator);
+    }
+    
+    // Update zoom level text
+    zoomIndicator.textContent = `Zoom: ${Math.round(gameState.zoom * 100)}%`;
+    
+    // Show the indicator
+    zoomIndicator.style.opacity = '1';
+    zoomIndicator.style.display = 'block';
+    
+    // Hide after a delay
+    clearTimeout(window.zoomIndicatorTimeout);
+    window.zoomIndicatorTimeout = setTimeout(() => {
+        zoomIndicator.style.opacity = '0';
+    }, 1500);
+}
+
+// Toggle debug mode
+function toggleDebugMode() {
+    gameState.debug = !gameState.debug;
+    console.log(`Debug mode: ${gameState.debug ? 'ON' : 'OFF'}`);
+    
+    // Show or hide debug elements
+    const debugElements = document.querySelectorAll('.debug-element');
+    debugElements.forEach(el => {
+        el.style.display = gameState.debug ? 'block' : 'none';
+    });
+    
+    // Create debug overlay if it doesn't exist
+    if (gameState.debug && !document.getElementById('debug-overlay')) {
+        createDebugOverlay();
+    }
+}
+
+// Create debug overlay
+function createDebugOverlay() {
+    const overlay = document.createElement('div');
+    overlay.id = 'debug-overlay';
+    overlay.className = 'debug-element';
+    overlay.style.position = 'absolute';
+    overlay.style.top = '10px';
+    overlay.style.left = '10px';
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    overlay.style.color = 'white';
+    overlay.style.padding = '10px';
+    overlay.style.borderRadius = '5px';
+    overlay.style.fontFamily = 'monospace';
+    overlay.style.fontSize = '12px';
+    overlay.style.zIndex = '1000';
+    overlay.style.display = gameState.debug ? 'block' : 'none';
+    
+    // Add debug info
+    overlay.innerHTML = `
+        <div>Debug Mode</div>
+        <div id="debug-fps">FPS: 0</div>
+        <div id="debug-player-pos">Player: (0, 0)</div>
+        <div id="debug-camera-pos">Camera: (0, 0)</div>
+        <div id="debug-mouse-pos">Mouse: (0, 0)</div>
+        <div id="debug-zoom">Zoom: 100%</div>
+        <div id="debug-chunks">Loaded Chunks: 0</div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
+    // Update debug info every frame
+    function updateDebugInfo() {
+        if (!gameState.debug) return;
+        
+        const fps = Math.round(1000 / (performance.now() - gameState.lastFrameTime));
+        document.getElementById('debug-fps').textContent = `FPS: ${fps}`;
+        
+        document.getElementById('debug-player-pos').textContent = 
+            `Player: (${Math.round(gameState.player.x)}, ${Math.round(gameState.player.y)})`;
+        
+        document.getElementById('debug-camera-pos').textContent = 
+            `Camera: (${Math.round(gameState.camera.x)}, ${Math.round(gameState.camera.y)})`;
+        
+        document.getElementById('debug-mouse-pos').textContent = 
+            `Mouse: (${gameState.mouseX}, ${gameState.mouseY}) | World: (${Math.round(gameState.camera.x + gameState.mouseX / gameState.zoom)}, ${Math.round(gameState.camera.y + gameState.mouseY / gameState.zoom)})`;
+        
+        document.getElementById('debug-zoom').textContent = 
+            `Zoom: ${Math.round(gameState.zoom * 100)}%`;
+        
+        document.getElementById('debug-chunks').textContent = 
+            `Loaded Chunks: ${Object.keys(gameState.chunks).length}`;
+        
+        requestAnimationFrame(updateDebugInfo);
+    }
+    
+    updateDebugInfo();
+    
+    return overlay;
 } 

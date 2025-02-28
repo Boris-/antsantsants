@@ -34,6 +34,11 @@ const gameState = {
         targetY: 0
     },
     
+    // Zoom properties
+    zoom: 1.0,
+    minZoom: 0.5,
+    maxZoom: 2.0,
+    
     // Game properties
     enemies: [],
     gravity: 0.4,
@@ -50,7 +55,10 @@ const gameState = {
     // World generation properties
     worldSeed: Math.floor(Math.random() * 1000000),
     hasUnsavedChanges: false,
-    lastSaveTime: 0
+    lastSaveTime: 0,
+    
+    // Debug mode
+    debug: false
 };
 
 // Initialize the game

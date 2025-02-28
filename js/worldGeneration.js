@@ -22,6 +22,9 @@ function generateWorld() {
 
 // Generate terrain heights for the entire world
 function generateTerrainHeights() {
+    // Initialize terrainHeights array
+    gameState.terrainHeights = new Array(WORLD_WIDTH);
+    
     // Base surface level
     const baseSurfaceLevel = Math.floor(WORLD_HEIGHT / 3);
     

@@ -14,25 +14,21 @@ function gameLoop(timestamp) {
     updatePlayerPosition();
     updateEnemies();
     
-    // Update camera position with smooth following
-    gameState.camera.targetX = gameState.player.x - gameState.canvas.width / 2 + gameState.player.width / 2;
-    gameState.camera.targetY = gameState.player.y - gameState.canvas.height / 2 + gameState.player.height / 2;
+    // Update camera position with smooth following (adjusted for zoom)
+    // Calculate the center position where the player should be on screen
+    const centerX = gameState.canvas.width / 2;
+    const centerY = gameState.canvas.height / 2;
+    
+    // Calculate the target camera position to center the player
+    gameState.camera.targetX = gameState.player.x + (gameState.player.width / 2) - (centerX / gameState.zoom);
+    gameState.camera.targetY = gameState.player.y + (gameState.player.height / 2) - (centerY / gameState.zoom);
     
     // Apply camera lerp for smooth movement
     gameState.camera.x += (gameState.camera.targetX - gameState.camera.x) * CAMERA_LERP;
     gameState.camera.y += (gameState.camera.targetY - gameState.camera.y) * CAMERA_LERP;
     
-    // Draw world
+    // Draw world (now includes player and enemies)
     drawWorld();
-    
-    // Draw player
-    drawPlayer();
-    
-    // Draw enemies
-    drawEnemies();
-    
-    // Draw minimap
-    drawMinimap();
     
     // Update UI
     updateUI();
@@ -58,67 +54,6 @@ function checkAutoSave() {
         saveGame();
         showNotification('Game auto-saved');
     }
-}
-
-// Draw minimap
-function drawMinimap() {
-    const minimapSize = 150;
-    const minimapX = gameState.canvas.width - minimapSize - 10;
-    const minimapY = 10;
-    const minimapScale = 0.05; // Scale factor for the minimap
-    
-    // Draw minimap background
-    gameState.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    gameState.ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
-    
-    // Draw visible chunks on minimap
-    const playerChunkX = Math.floor(gameState.player.x / (gameState.chunkSize * gameState.tileSize));
-    const playerChunkY = Math.floor(gameState.player.y / (gameState.chunkSize * gameState.tileSize));
-    
-    // Draw chunks
-    for (const chunkKey in gameState.chunks) {
-        const [chunkX, chunkY] = chunkKey.split(',').map(Number);
-        
-        // Calculate minimap position
-        const chunkMinimapX = minimapX + minimapSize / 2 + (chunkX - playerChunkX) * gameState.chunkSize * gameState.tileSize * minimapScale;
-        const chunkMinimapY = minimapY + minimapSize / 2 + (chunkY - playerChunkY) * gameState.chunkSize * gameState.tileSize * minimapScale;
-        
-        // Only draw if within minimap bounds
-        if (chunkMinimapX >= minimapX && chunkMinimapX <= minimapX + minimapSize &&
-            chunkMinimapY >= minimapY && chunkMinimapY <= minimapY + minimapSize) {
-            
-            // Draw chunk representation
-            gameState.ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
-            gameState.ctx.fillRect(
-                chunkMinimapX, 
-                chunkMinimapY, 
-                gameState.chunkSize * gameState.tileSize * minimapScale,
-                gameState.chunkSize * gameState.tileSize * minimapScale
-            );
-        }
-    }
-    
-    // Draw player on minimap
-    const playerMinimapX = minimapX + minimapSize / 2;
-    const playerMinimapY = minimapY + minimapSize / 2;
-    
-    gameState.ctx.fillStyle = 'red';
-    gameState.ctx.beginPath();
-    gameState.ctx.arc(playerMinimapX, playerMinimapY, 3, 0, Math.PI * 2);
-    gameState.ctx.fill();
-    
-    // Draw current view area
-    const viewWidth = gameState.canvas.width * minimapScale;
-    const viewHeight = gameState.canvas.height * minimapScale;
-    
-    gameState.ctx.strokeStyle = 'white';
-    gameState.ctx.lineWidth = 1;
-    gameState.ctx.strokeRect(
-        playerMinimapX - viewWidth / 2,
-        playerMinimapY - viewHeight / 2,
-        viewWidth,
-        viewHeight
-    );
 }
 
 // Add save button to UI
