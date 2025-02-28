@@ -421,21 +421,48 @@ function generateChunk(chunkX, chunkY) {
                 }
                 // Stone layer
                 else if (worldY > terrainHeight + 3) {
+                    // Default to stone for most underground blocks
                     tileType = TILE_TYPES.STONE;
                     
-                    // Generate caves
-                    if (generateCaveNoise(worldX, worldY) > 0.7) {
+                    // Calculate depth from surface
+                    const depth = worldY - terrainHeight;
+                    
+                    // Generate caves - use a higher threshold to make caves less common but more interesting
+                    const caveNoiseValue = generateCaveNoise(worldX, worldY);
+                    if (caveNoiseValue > 0.78) { // Increased from 0.7 to 0.78 to make caves less common
                         tileType = TILE_TYPES.AIR;
+                    } 
+                    // Create occasional dirt pockets in the stone layer
+                    else if (depth < 20 && Math.random() < 0.15) {
+                        tileType = TILE_TYPES.DIRT;
+                    }
+                    // Create occasional small water pockets deeper down
+                    else if (depth > 40 && caveNoiseValue > 0.75 && caveNoiseValue <= 0.78 && Math.random() < 0.2) {
+                        tileType = TILE_TYPES.WATER;
                     }
                     
-                    // Generate ores
+                    // Generate ores with slightly increased frequency
                     if (tileType === TILE_TYPES.STONE) {
-                        tileType = generateOre(worldX, worldY, terrainHeight);
+                        const oreType = generateOre(worldX, worldY, terrainHeight);
+                        if (oreType !== TILE_TYPES.STONE) {
+                            tileType = oreType;
+                        }
                     }
                 }
-                // Dirt layer
+                // Dirt layer near surface
                 else {
-                    tileType = TILE_TYPES.DIRT;
+                    // Mostly dirt with occasional stone
+                    if (Math.random() < 0.85) {
+                        tileType = TILE_TYPES.DIRT;
+                    } else {
+                        tileType = TILE_TYPES.STONE;
+                    }
+                    
+                    // Occasional small caves or tunnels near the surface
+                    const surfaceCaveNoise = generateCaveNoise(worldX, worldY);
+                    if (surfaceCaveNoise > 0.85) {
+                        tileType = TILE_TYPES.AIR;
+                    }
                 }
             }
             
@@ -642,25 +669,44 @@ function generateCaveNoise(x, y) {
     // Use multiple noise layers for more interesting caves
     const caveNoise1 = new SimplexNoise(gameState.worldSeed + 100);
     const caveNoise2 = new SimplexNoise(gameState.worldSeed + 200);
+    const caveNoise3 = new SimplexNoise(gameState.worldSeed + 300); // Additional noise layer
     
     // Different scales for different noise layers
     const scale1 = 0.05;
     const scale2 = 0.1;
+    const scale3 = 0.02; // Larger scale for broader features
     
     // Get noise values
     const noise1 = (caveNoise1.noise2D(x * scale1, y * scale1) + 1) / 2;
     const noise2 = (caveNoise2.noise2D(x * scale2, y * scale2) + 1) / 2;
+    const noise3 = (caveNoise3.noise2D(x * scale3, y * scale3) + 1) / 2;
     
-    // Combine noise values
-    const combinedNoise = (noise1 * 0.7 + noise2 * 0.3);
+    // Combine noise values with different weights
+    const combinedNoise = (noise1 * 0.5 + noise2 * 0.3 + noise3 * 0.2);
     
     // Add depth-based adjustment (more caves deeper down)
     const terrainHeight = getTerrainHeight(x);
     const depth = y - terrainHeight;
-    const depthFactor = Math.min(1, Math.max(0, depth / 30));
+    
+    // Create different cave distributions at different depths
+    let depthFactor = 0;
+    
+    if (depth < 10) {
+        // Very few caves near surface
+        depthFactor = 0.1;
+    } else if (depth < 30) {
+        // Some small caves at medium depths
+        depthFactor = 0.3 + (depth - 10) / 20 * 0.2;
+    } else if (depth < 60) {
+        // More caves at deeper levels
+        depthFactor = 0.5 + (depth - 30) / 30 * 0.3;
+    } else {
+        // Most caves at deepest levels
+        depthFactor = 0.8;
+    }
     
     // Return adjusted noise value
-    return combinedNoise * (0.8 + depthFactor * 0.4);
+    return combinedNoise * (0.7 + depthFactor * 0.3);
 }
 
 // Generate ore based on depth and noise
@@ -692,31 +738,31 @@ function generateOre(x, y, terrainHeight) {
     const goldValue = (goldNoise.noise2D(x * goldScale, y * goldScale) + 1) / 2;
     const diamondValue = (diamondNoise.noise2D(x * diamondScale, y * diamondScale) + 1) / 2;
     
-    // Ore thresholds - higher means less common
-    const oreThreshold = 0.7;
-    const coalThreshold = 0.75;
-    const ironThreshold = 0.8;
-    const goldThreshold = 0.85;
-    const diamondThreshold = 0.9;
+    // Ore thresholds - slightly lower to increase ore frequency
+    const oreThreshold = 0.68; // Was 0.7
+    const coalThreshold = 0.73; // Was 0.75
+    const ironThreshold = 0.78; // Was 0.8
+    const goldThreshold = 0.83; // Was 0.85
+    const diamondThreshold = 0.88; // Was 0.9
     
     // Adjust ore frequency based on depth
-    const baseOreFrequency = 0.05 * (1 + normalizedDepth);
+    const baseOreFrequency = 0.06 * (1 + normalizedDepth); // Was 0.05
     
     // Determine ore type based on depth and noise
     // Diamond (very rare, very deep)
-    if (depth > 60 && diamondValue > diamondThreshold && Math.random() < baseOreFrequency * 0.2) {
+    if (depth > 60 && diamondValue > diamondThreshold && Math.random() < baseOreFrequency * 0.25) {
         return TILE_TYPES.DIAMOND;
     }
     // Gold (rare, deep)
-    else if (depth > 40 && goldValue > goldThreshold && Math.random() < baseOreFrequency * 0.4) {
+    else if (depth > 40 && goldValue > goldThreshold && Math.random() < baseOreFrequency * 0.45) {
         return TILE_TYPES.GOLD;
     }
     // Iron (uncommon, medium depth)
-    else if (depth > 20 && ironValue > ironThreshold && Math.random() < baseOreFrequency * 0.6) {
+    else if (depth > 20 && ironValue > ironThreshold && Math.random() < baseOreFrequency * 0.65) {
         return TILE_TYPES.IRON;
     }
     // Coal (common, all depths)
-    else if (depth > 10 && coalValue > coalThreshold && Math.random() < baseOreFrequency * 0.8) {
+    else if (depth > 10 && coalValue > coalThreshold && Math.random() < baseOreFrequency * 0.85) {
         return TILE_TYPES.COAL;
     }
     // Generic ore (most common)
