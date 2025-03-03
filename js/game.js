@@ -25,12 +25,21 @@ setInterval(cleanupRecentlyDugBlocks, 30000);
 
 // Set up references to multiplayer functions
 function setupMultiplayerReferences() {
+    console.log("Setting up multiplayer references...");
+    
     // Check if multiplayer functions exist
     if (typeof window.requestChunk === 'function') {
+        console.log("Found requestChunk function");
         _requestChunk = window.requestChunk;
+    } else {
+        console.warn("requestChunk function not found");
     }
+    
     if (typeof window.sendBlockDig === 'function') {
+        console.log("Found sendBlockDig function");
         _sendBlockDig = window.sendBlockDig;
+    } else {
+        console.warn("sendBlockDig function not found");
     }
 }
 
@@ -362,83 +371,131 @@ function checkCollision(x, y) {
 
 // Handle digging
 function handleDigging() {
-    // Check if mouse is pressed
-    if (gameState.mouse.leftPressed) {
+    // Check if mouse is down
+    if (gameState.mouseDown) {
+        console.log("Mouse is down, attempting to dig");
+        
         // Calculate mouse position in world coordinates
-        const mouseWorldX = gameState.mouse.x / gameState.zoom + gameState.camera.x;
-        const mouseWorldY = gameState.mouse.y / gameState.zoom + gameState.camera.y;
+        const mouseWorldX = Math.floor((gameState.mouseX / gameState.zoom) + gameState.camera.x);
+        const mouseWorldY = Math.floor((gameState.mouseY / gameState.zoom) + gameState.camera.y);
+        
+        console.log(`Mouse world coordinates: (${mouseWorldX}, ${mouseWorldY})`);
+        
+        // Calculate tile coordinates
+        const tileX = Math.floor(mouseWorldX / TILE_SIZE);
+        const tileY = Math.floor(mouseWorldY / TILE_SIZE);
+        
+        console.log(`Tile coordinates: (${tileX}, ${tileY})`);
         
         // Calculate distance from player to mouse
-        const distanceToMouse = Math.sqrt(
-            Math.pow(mouseWorldX - (gameState.player.x + gameState.player.width / 2), 2) +
-            Math.pow(mouseWorldY - (gameState.player.y + gameState.player.height / 2), 2)
+        const playerCenterX = gameState.player.x + gameState.player.width / 2;
+        const playerCenterY = gameState.player.y + gameState.player.height / 2;
+        const distance = Math.sqrt(
+            Math.pow(playerCenterX - mouseWorldX, 2) + 
+            Math.pow(playerCenterY - mouseWorldY, 2)
         );
         
+        console.log(`Player center: (${playerCenterX}, ${playerCenterY}), Distance to mouse: ${distance}, Dig range: ${gameState.player.digRange}`);
+        
         // Check if mouse is within digging range
-        if (distanceToMouse <= gameState.player.digRange) {
-            // Calculate tile coordinates
-            const tileX = Math.floor(mouseWorldX / TILE_SIZE);
-            const tileY = Math.floor(mouseWorldY / TILE_SIZE);
+        if (distance <= gameState.player.digRange) {
+            console.log("Mouse is within digging range");
             
-            // Create a unique key for this block position
-            const blockKey = `${tileX},${tileY}`;
+            // Get current tile type
+            const currentTile = getTile(tileX, tileY);
             
-            // Check if we've recently dug this block
-            const now = Date.now();
-            const lastDug = recentlyDugBlocks.get(blockKey);
+            // Debug output
+            console.log(`Attempting to dig at (${tileX}, ${tileY}), tile type: ${currentTile}, diggable: ${isDiggable(currentTile)}`);
             
-            // Only process if it's been at least 500ms since the last dig for this block
-            // or if this is the first dig for this block
-            if (!lastDug || (now - lastDug > 500)) {
-                // Get current tile
-                const currentTile = getTile(tileX, tileY);
+            // Check if tile is diggable
+            if (isDiggable(currentTile)) {
+                console.log(`Tile is diggable: ${currentTile}`);
                 
-                // Check if tile is diggable
-                if (currentTile !== TILE_TYPES.AIR && currentTile !== TILE_TYPES.BEDROCK) {
+                // Create a unique key for this block position
+                const blockKey = `${tileX},${tileY}`;
+                
+                // Check if we've recently dug this block
+                const now = Date.now();
+                const lastDug = recentlyDugBlocks.get(blockKey);
+                
+                console.log(`Last dug time: ${lastDug}, Current time: ${now}, Difference: ${lastDug ? now - lastDug : 'first dig'}`);
+                
+                // Only dig if it's been at least 500ms since the last dig for this block
+                // or if this is the first dig for this block
+                if (!lastDug || (now - lastDug > 500)) {
+                    console.log(`Digging block at (${tileX}, ${tileY}), tile type: ${currentTile}`);
+                    
                     // Record this dig time
                     recentlyDugBlocks.set(blockKey, now);
                     
-                    // Add to inventory before changing the tile
-                    // This ensures we're adding the correct item to inventory
-                    addToInventory(currentTile);
-                    
-                    // Set tile to air
-                    setTile(tileX, tileY, TILE_TYPES.AIR);
-                    
-                    // Send block dig to server (for multiplayer)
-                    _sendBlockDig(tileX * TILE_SIZE, tileY * TILE_SIZE, TILE_TYPES.AIR);
-                    
-                    // Create digging particles - use our improved particle system directly
+                    // Create particles at the center of the tile
                     const particleX = tileX * TILE_SIZE + TILE_SIZE / 2;
                     const particleY = tileY * TILE_SIZE + TILE_SIZE / 2;
                     const particleColor = getTileColor(currentTile);
                     
-                    // Create many small particles
-                    createParticles(particleX, particleY, particleColor, 30);
+                    // Create particles
+                    createParticles(particleX, particleY, particleColor, 20);
                     
-                    // Add a few larger particles for better effect
-                    for (let i = 0; i < 5; i++) {
-                        const angle = Math.random() * Math.PI * 2;
-                        const speed = 2 + Math.random() * 3;
+                    // Check if tile is collectible
+                    if (isCollectible(currentTile)) {
+                        console.log(`Tile is collectible: ${currentTile}`);
                         
-                        gameState.particles.push({
-                            x: particleX,
-                            y: particleY,
-                            velocityX: Math.cos(angle) * speed,
-                            velocityY: Math.sin(angle) * speed - 3, // Stronger upward boost
-                            color: particleColor,
-                            size: 4 + Math.random() * 4, // Larger particles
-                            expireTime: Date.now() + 400 + Math.random() * 300,
-                            gravity: 0.25 + Math.random() * 0.1,
-                            createdAt: Date.now()
-                        });
+                        // Add to inventory
+                        switch (currentTile) {
+                            case TILE_TYPES.COAL:
+                                gameState.player.inventory.coal++;
+                                break;
+                            case TILE_TYPES.IRON:
+                                gameState.player.inventory.iron++;
+                                break;
+                            case TILE_TYPES.GOLD:
+                                gameState.player.inventory.gold++;
+                                break;
+                            case TILE_TYPES.DIAMOND:
+                                gameState.player.inventory.diamond++;
+                                break;
+                            case TILE_TYPES.DIRT:
+                                gameState.player.inventory.dirt++;
+                                break;
+                            case TILE_TYPES.STONE:
+                                gameState.player.inventory.stone++;
+                                break;
+                        }
+                        
+                        // Update inventory display
+                        if (typeof window.updateInventoryDisplay === 'function') {
+                            window.updateInventoryDisplay();
+                        }
+                        
+                        // Add score
+                        gameState.score += getScoreValue(currentTile);
+                        
+                        // Update score display
+                        if (typeof window.updateScoreDisplay === 'function') {
+                            window.updateScoreDisplay();
+                        }
                     }
                     
-                    // Play digging sound
-                    // playSound('dig');
+                    // Send block dig to server if multiplayer is enabled
+                    if (typeof _sendBlockDig === 'function') {
+                        console.log(`Sending block dig to server: (${tileX}, ${tileY}), tile type: ${TILE_TYPES.AIR}`);
+                        _sendBlockDig(tileX, tileY, TILE_TYPES.AIR);
+                    } else {
+                        console.log(`No _sendBlockDig function available, updating tile locally`);
+                        // If not in multiplayer mode, update the tile locally
+                        setTile(tileX, tileY, TILE_TYPES.AIR);
+                    }
+                } else {
+                    console.log(`Too soon to dig this block again, need to wait ${500 - (now - lastDug)}ms more`);
                 }
+            } else {
+                console.log(`Tile is not diggable: ${currentTile}`);
             }
+        } else {
+            console.log(`Mouse is too far from player (${distance} > ${gameState.player.digRange})`);
         }
+    } else {
+        console.log("Mouse is not down, not attempting to dig");
     }
 }
 
@@ -1248,92 +1305,94 @@ function drawParticles() {
 
 // Check and request chunks if needed
 function checkAndRequestChunks() {
-    // Only in multiplayer mode
-    if (!socket || !socket.connected) return;
+    // Skip if no requestChunk function available
+    if (typeof window.requestChunk !== 'function') return;
     
     // Calculate player chunk
-    const playerChunkX = Math.floor(gameState.player.x / (CHUNK_SIZE * TILE_SIZE));
-    const playerChunkY = Math.floor(gameState.player.y / (CHUNK_SIZE * TILE_SIZE));
+    const playerChunkX = Math.floor(gameState.player.x / TILE_SIZE / CHUNK_SIZE);
+    const playerChunkY = Math.floor(gameState.player.y / TILE_SIZE / CHUNK_SIZE);
     
-    // Check chunks in visible radius
+    // Request chunks in a radius around the player
     for (let y = playerChunkY - VISIBLE_CHUNKS_RADIUS; y <= playerChunkY + VISIBLE_CHUNKS_RADIUS; y++) {
         for (let x = playerChunkX - VISIBLE_CHUNKS_RADIUS; x <= playerChunkX + VISIBLE_CHUNKS_RADIUS; x++) {
-            const chunkKey = `${x},${y}`;
-            
-            // Request chunk if not loaded
-            if (!gameState.loadedChunks.has(chunkKey)) {
-                _requestChunk(x, y);
+            // Skip if out of world bounds
+            if (x < 0 || y < 0 || x >= Math.ceil(WORLD_WIDTH / CHUNK_SIZE) || y >= Math.ceil(WORLD_HEIGHT / CHUNK_SIZE)) {
+                continue;
             }
+            
+            // Request chunk
+            window.requestChunk(x, y);
         }
     }
 }
 
 // Get a tile at specific world coordinates
 function getTile(x, y) {
+    // Check if out of bounds
     if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
         return TILE_TYPES.BEDROCK; // Out of bounds is bedrock
     }
     
+    // Calculate chunk coordinates
     const chunkX = Math.floor(x / CHUNK_SIZE);
     const chunkY = Math.floor(y / CHUNK_SIZE);
     const chunkKey = `${chunkX},${chunkY}`;
     
-    // Check if chunk is loaded
-    if (!gameState.chunks[chunkKey]) {
-        // In multiplayer mode, request chunk from server
-        if (gameState.isMultiplayer) {
-            _requestChunk(chunkX, chunkY);
-            return TILE_TYPES.AIR; // Return air while waiting for chunk
-        } else {
-            // Return air if chunk not loaded in single player mode
-            // We don't generate chunks here to avoid circular dependencies
-            return TILE_TYPES.AIR;
-        }
-    }
-    
+    // Calculate local coordinates within chunk
     const localX = x % CHUNK_SIZE;
     const localY = y % CHUNK_SIZE;
     
-    // Make sure the chunk and its data exist
-    if (gameState.chunks[chunkKey] && 
-        gameState.chunks[chunkKey][localY] && 
-        gameState.chunks[chunkKey][localY][localX] !== undefined) {
-        return gameState.chunks[chunkKey][localY][localX];
+    // Check if chunk exists
+    if (!gameState.chunks[chunkKey]) {
+        // Request chunk if multiplayer is enabled
+        if (typeof window.requestChunk === 'function') {
+            window.requestChunk(chunkX, chunkY);
+        }
+        
+        // Return air for now
+        return TILE_TYPES.AIR;
     }
     
-    return TILE_TYPES.AIR; // Default to air if chunk data is incomplete
+    // Return tile from chunk
+    return gameState.chunks[chunkKey][localY][localX];
 }
 
 // Set a tile at specific world coordinates
 function setTile(x, y, tileType, sendToServer = true) {
+    // Check if out of bounds
     if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
         return; // Out of bounds
     }
     
+    // Calculate chunk coordinates
     const chunkX = Math.floor(x / CHUNK_SIZE);
     const chunkY = Math.floor(y / CHUNK_SIZE);
     const chunkKey = `${chunkX},${chunkY}`;
     
-    // Check if chunk is loaded
-    if (!gameState.chunks[chunkKey]) {
-        // We can't set tiles in unloaded chunks
-        return;
-    }
-    
+    // Calculate local coordinates within chunk
     const localX = x % CHUNK_SIZE;
     const localY = y % CHUNK_SIZE;
     
-    // Make sure the chunk and its data exist
-    if (gameState.chunks[chunkKey] && 
-        gameState.chunks[chunkKey][localY]) {
-        // Update tile
-        gameState.chunks[chunkKey][localY][localX] = tileType;
-        
-        // In multiplayer mode, send block update to server
-        if (gameState.isMultiplayer && sendToServer) {
-            _sendBlockDig(x * TILE_SIZE, y * TILE_SIZE, tileType);
+    // Check if chunk exists
+    if (!gameState.chunks[chunkKey]) {
+        // Request chunk if multiplayer is enabled
+        if (typeof _requestChunk === 'function') {
+            _requestChunk(chunkX, chunkY);
         }
+        
+        return; // Can't set tile in non-existent chunk
     }
+    
+    // Set tile in chunk
+    gameState.chunks[chunkKey][localY][localX] = tileType;
+    
+    // Send to server if requested and multiplayer is enabled
+    if (sendToServer && typeof _sendBlockDig === 'function') {
+        _sendBlockDig(x, y, tileType);
+    }
+    
+    // Mark as having unsaved changes
+    gameState.hasUnsavedChanges = true;
 }
 
 // Expose game functions to window object for use in other modules
@@ -1349,4 +1408,11 @@ window.getTile = getTile;
 window.setTile = setTile;
 window.checkAndRequestChunks = checkAndRequestChunks;
 window.renderGameInternal = renderGameInternal;
-window.createParticles = createParticles; 
+window.createParticles = createParticles;
+window.isDiggable = isDiggable;
+window.isSolid = isSolid;
+window.isCollectible = isCollectible;
+
+// Log that the functions have been exported
+console.log("Game functions exported to window object");
+console.log("handleDigging function available:", typeof window.handleDigging === 'function'); 

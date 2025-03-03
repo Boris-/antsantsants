@@ -14,14 +14,31 @@
     <script src="js/libs/simplex-noise.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     
-    <!-- Game files -->
+    <!-- Game files - Order matters! -->
     <script src="js/constants.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/initialization.js"></script>
     <script src="js/worldGeneration.js"></script>
     <script src="js/rendering.js"></script>
-    <script src="js/multiplayer.js"></script>
+    <script src="js/input.js"></script>
     <script src="js/game.js"></script>
+    <script src="js/multiplayer.js"></script>
     <script src="js/main.js"></script>
+    
+    <!-- Debug console output -->
+    <script>
+        console.log("All scripts loaded");
+        
+        // Check if key functions are available
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log("Checking for key functions:");
+                console.log("- sendBlockDig:", typeof window.sendBlockDig === 'function' ? "Available" : "Not available");
+                console.log("- getTile:", typeof window.getTile === 'function' ? "Available" : "Not available");
+                console.log("- setTile:", typeof window.setTile === 'function' ? "Available" : "Not available");
+                console.log("- handleDigging:", typeof window.handleDigging === 'function' ? "Available" : "Not available");
+            }, 2000);
+        });
+    </script>
 </body>
 </html>

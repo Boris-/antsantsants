@@ -1,86 +1,93 @@
-# Multiplayer Ant Game
+# Ant Terraria - Persistent Multiplayer World
 
-A 2D procedurally generated sandbox game with biomes, mining, and exploration. Now with multiplayer support!
+A 2D sandbox game inspired by Terraria, featuring a persistent world where multiple players can play and build together.
 
 ## Features
 
-- Explore different biomes (Plains, Forest, Desert, Mountains)
-- Collect resources (coal, iron, gold, diamonds)
-- Dig deeper to find rarer ores
-- Play with friends in multiplayer mode
-- Real-time world updates via WebSockets
-
-## Controls
-
-- **WASD** - Move your ant
-- **Mouse Click** - Dig blocks
-- **Scroll Wheel** - Zoom in/out
+- **Persistent World**: The world is generated once by the server and saved to disk, allowing players to make permanent changes to the environment.
+- **Multiplayer Support**: Multiple players can join the same world, see each other, and interact with the environment together.
+- **Biome System**: Different biomes with unique features and terrain generation.
+- **Mining and Building**: Dig through the terrain and collect resources.
+- **Inventory System**: Collect and store resources in your inventory.
 
 ## How to Run
 
 ### Prerequisites
 
 - Node.js (v14 or higher)
-- npm
+- NPM (v6 or higher)
 
-### Installation
+### Server Setup
 
-1. Clone the repository
+1. Clone the repository:
+   ```
+   git clone <repository-url>
+   cd antsantsants
+   ```
+
 2. Install dependencies:
    ```
-   npm install
+   npm install express socket.io cors
    ```
 
-### Running the Server
-
-1. Start the server:
+3. Start the server:
    ```
    node server.js
    ```
-   This will start the server on port 3000.
+   The server will start on port 3001 by default.
 
-### Running the Client
+### Client Setup
 
-1. Open `index.html` in your browser
-2. The game will automatically connect to the server running on localhost:3000
+1. Open a web browser and navigate to:
+   ```
+   http://localhost:3001
+   ```
 
-### Playing with Friends
+2. Multiple players can connect to the same server by opening the URL in different browser windows or from different computers on the same network.
 
-To play with friends over the internet, you'll need to:
+## Controls
 
-1. Make sure your server is accessible from the internet (you may need to configure port forwarding on your router)
-2. Update the Socket.IO connection URL in `js/multiplayer.js` to point to your server's public IP or domain
+- **WASD**: Move the player
+- **Mouse**: Aim
+- **Left Mouse Button**: Dig blocks
+- **F3**: Toggle debug information
+- **Mouse Wheel**: Zoom in/out
 
 ## Technical Details
 
-### Server-Side
+### Server-Side World Generation
 
-- Express.js for serving static files
-- Socket.IO for real-time communication
-- Custom world generation algorithm
+The world is generated once when the server starts for the first time. The world data is saved to a file (`world_save.json`) and loaded each time the server restarts. This ensures that all changes made to the world persist between server restarts.
 
-### Client-Side
+### Client-Server Communication
 
-- HTML5 Canvas for rendering
-- Socket.IO client for multiplayer communication
-- Procedural terrain generation
+- The server sends the initial world data (terrain heights, biome map) to clients when they connect.
+- Clients request chunks from the server as needed when exploring the world.
+- When a player breaks a block, the client sends the change to the server, which updates its world state and broadcasts the change to all connected clients.
+- Player positions are continuously synchronized between clients.
 
-## Multiplayer Features
+### Auto-Saving
 
-- Shared world for all players
-- See other players moving in real-time
-- Synchronized block digging
-- Server-side world generation for consistency
+The server automatically saves the world state:
+- Every 5 minutes
+- After every 100 block updates
+- When the server is shutting down
 
 ## Future Improvements
 
-- Player authentication
-- Saving player progress
-- More biomes and resources
+- Block placement
 - Crafting system
-- Enemy mobs
+- More biomes and terrain features
+- Enemies and combat
 - Day/night cycle
+- Weather effects
+
+## Troubleshooting
+
+- If you can't connect to the server, make sure the server is running and that you're using the correct URL.
+- If the world doesn't load properly, try clearing your browser cache and refreshing the page.
+- If players can't see each other, check that they're connected to the same server instance.
 
 ## License
 
-MIT 
+This project is licensed under the MIT License - see the LICENSE file for details. 

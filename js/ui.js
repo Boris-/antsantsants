@@ -272,7 +272,7 @@ function showDamageFlash() {
     }, 200);
 }
 
-// Make UI functions globally accessible
+// Expose UI functions to window object
 window.initializeUI = initializeUI;
 window.updateUI = updateUI;
 window.updateHealthDisplay = updateHealthDisplay;
@@ -282,4 +282,7 @@ window.updateBiomeDisplay = updateBiomeDisplay;
 window.updateDebugInfo = updateDebugInfo;
 window.showGameMessage = showGameMessage;
 window.toggleDebugMode = toggleDebugMode;
-window.showDamageFlash = showDamageFlash; 
+window.showDamageFlash = showDamageFlash;
+
+// Log that UI functions have been exported
+console.log("UI functions exported to window object"); 

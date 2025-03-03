@@ -2,6 +2,7 @@
 let socket;
 let otherPlayers = {};
 let playerId;
+let isConnectedToServer = false;
 
 // Track recently processed block updates to prevent duplicates
 const recentBlockUpdates = new Map();
@@ -38,6 +39,7 @@ function setupSocketEvents() {
     // Handle connection
     socket.on('connect', () => {
         console.log('Connected to server with ID:', socket.id);
+        isConnectedToServer = true;
     });
     
     // Handle initialization data from server
@@ -66,6 +68,11 @@ function setupSocketEvents() {
         // Set biome map from server
         gameState.biomeMap = data.biomeMap;
         
+        // Initialize biomes if needed
+        if (!gameState.biomeTypes) {
+            initializeBiomes();
+        }
+        
         // Place player at a safe location
         placePlayerSafely();
         
@@ -74,6 +81,9 @@ function setupSocketEvents() {
         
         // Show player ID on screen
         showPlayerInfo();
+        
+        // Show notification
+        showNotification('Connected to persistent world');
     });
     
     // Handle new player joining
@@ -174,6 +184,7 @@ function setupSocketEvents() {
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log('Disconnected from server');
+        isConnectedToServer = false;
         showNotification('Disconnected from server');
     });
     
@@ -206,16 +217,23 @@ function requestInitialChunks() {
 
 // Request a chunk from the server
 function requestChunk(chunkX, chunkY) {
+    if (!isConnectedToServer) return;
+    
     const chunkKey = `${chunkX},${chunkY}`;
     
     // Only request if not already loaded
     if (!gameState.loadedChunks.has(chunkKey)) {
         socket.emit('requestChunk', { chunkX, chunkY });
+        
+        // Mark as requested to prevent duplicate requests
+        gameState.loadedChunks.add(chunkKey);
     }
 }
 
 // Send player position to server
 function sendPlayerPosition() {
+    if (!isConnectedToServer) return;
+    
     if (socket && socket.connected) {
         socket.emit('playerMove', {
             x: gameState.player.x,
@@ -230,6 +248,8 @@ function sendPlayerPosition() {
 
 // Send inventory update to server
 function sendInventoryUpdate() {
+    if (!isConnectedToServer) return;
+    
     if (socket && socket.connected && gameState.player && gameState.player.inventory) {
         socket.emit('inventoryUpdate', {
             inventory: gameState.player.inventory
@@ -239,342 +259,204 @@ function sendInventoryUpdate() {
 
 // Send block dig to server
 function sendBlockDig(x, y, tileType) {
+    if (!isConnectedToServer) {
+        console.warn("Not connected to server, can't send block dig");
+        return;
+    }
+    
     if (socket && socket.connected) {
-        // Determine what item was collected based on the original tile type
-        // We need to get the original tile type at this position
-        const worldX = Math.floor(x / TILE_SIZE);
-        const worldY = Math.floor(y / TILE_SIZE);
-        const originalTileType = getTile(worldX, worldY);
+        console.log(`Multiplayer: Sending block dig to server at (${x}, ${y}), tile type: ${tileType}`);
+        
+        // Get the original tile type at this position
+        const originalTileType = getMultiplayerTile(x, y);
         
         // Convert tile type to inventory item name
         let itemCollected = null;
-        if (originalTileType !== TILE_TYPES.AIR && originalTileType !== tileType) {
-            switch (originalTileType) {
-                case TILE_TYPES.DIRT:
-                    itemCollected = 'dirt';
-                    break;
-                case TILE_TYPES.STONE:
-                    itemCollected = 'stone';
-                    break;
-                case TILE_TYPES.GRASS:
-                    itemCollected = 'grass';
-                    break;
-                case TILE_TYPES.SAND:
-                    itemCollected = 'sand';
-                    break;
-                case TILE_TYPES.COAL:
-                    itemCollected = 'coal';
-                    break;
-                case TILE_TYPES.IRON:
-                    itemCollected = 'iron';
-                    break;
-                case TILE_TYPES.GOLD:
-                    itemCollected = 'gold';
-                    break;
-                case TILE_TYPES.DIAMOND:
-                    itemCollected = 'diamond';
-                    break;
-            }
+        
+        switch (originalTileType) {
+            case TILE_TYPES.DIRT:
+                itemCollected = 'dirt';
+                break;
+            case TILE_TYPES.STONE:
+                itemCollected = 'stone';
+                break;
+            case TILE_TYPES.GRASS:
+                itemCollected = 'grass';
+                break;
+            case TILE_TYPES.SAND:
+                itemCollected = 'sand';
+                break;
+            case TILE_TYPES.COAL:
+                itemCollected = 'coal';
+                break;
+            case TILE_TYPES.IRON:
+                itemCollected = 'iron';
+                break;
+            case TILE_TYPES.GOLD:
+                itemCollected = 'gold';
+                break;
+            case TILE_TYPES.DIAMOND:
+                itemCollected = 'diamond';
+                break;
+            default:
+                itemCollected = null;
         }
         
+        // Send block dig to server with tile coordinates
         socket.emit('blockDig', {
-            x: x,
-            y: y,
+            x: x * TILE_SIZE, // Convert tile coordinates to world coordinates for server
+            y: y * TILE_SIZE, // Convert tile coordinates to world coordinates for server
             tileType: tileType,
-            itemCollected: itemCollected
+            itemCollected: itemCollected,
+            originalTileType: originalTileType
         });
-        
-        // If we collected an item, also send an inventory update
-        if (itemCollected) {
-            // Wait a short time to ensure the server has processed the block dig
-            setTimeout(sendInventoryUpdate, 100);
-        }
+    } else {
+        console.warn("Socket not connected, can't send block dig");
     }
+}
+
+// Helper function to get a tile at specific world coordinates
+function getMultiplayerTile(x, y) {
+    // Use the game.js getTile function if available
+    if (typeof window.getTile === 'function') {
+        return window.getTile(x, y);
+    }
+    
+    // Fallback implementation if game.js getTile is not available
+    if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
+        return TILE_TYPES.BEDROCK; // Out of bounds is bedrock
+    }
+    
+    const chunkX = Math.floor(x / CHUNK_SIZE);
+    const chunkY = Math.floor(y / CHUNK_SIZE);
+    const chunkKey = `${chunkX},${chunkY}`;
+    
+    // Check if chunk exists
+    if (!gameState.chunks[chunkKey]) {
+        return TILE_TYPES.AIR; // Default to air if chunk doesn't exist
+    }
+    
+    // Get local coordinates within chunk
+    const localX = x % CHUNK_SIZE;
+    const localY = y % CHUNK_SIZE;
+    
+    // Return tile type
+    return gameState.chunks[chunkKey][localY][localX];
 }
 
 // Draw other players
 function drawOtherPlayers() {
+    // Skip if no canvas context
+    if (!gameState.ctx) return;
+    
+    // Save current context state
+    gameState.ctx.save();
+    
+    // Apply camera transformation
+    gameState.ctx.translate(-gameState.camera.x * gameState.zoom, -gameState.camera.y * gameState.zoom);
+    gameState.ctx.scale(gameState.zoom, gameState.zoom);
+    
+    // Draw each player
     for (const id in otherPlayers) {
         const player = otherPlayers[id];
         
-        // Set default values if properties are missing
-        const playerWidth = player.width || 20;
-        const playerHeight = player.height || 30;
+        // Skip if player has no position
+        if (player.x === undefined || player.y === undefined) continue;
         
-        // Calculate screen position
-        const screenX = Math.round((player.x - gameState.camera.x) * gameState.zoom);
-        const screenY = Math.round((player.y - gameState.camera.y) * gameState.zoom);
+        // Draw player body (simple rectangle for now)
+        gameState.ctx.fillStyle = player.color || '#FF0000';
+        gameState.ctx.fillRect(player.x, player.y, player.width || 20, player.height || 30);
         
-        // Use a consistent size based on player dimensions
-        const antWidth = playerWidth * 0.9 * gameState.zoom;  // 90% of player width, scaled by zoom
-        const antHeight = playerHeight * 0.9 * gameState.zoom; // 90% of player height, scaled by zoom
-        
-        // Calculate center position for the ant
-        const centerX = screenX + playerWidth * gameState.zoom / 2;
-        const centerY = screenY + playerHeight * gameState.zoom / 2;
-        
-        // Get player direction (default to 1 if not specified)
-        const direction = player.direction || 1;
-        
-        // Draw ant with three body segments - using a cute color scheme with slight variation
-        // Use a different color for each player based on their ID
-        const playerIdSum = id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const hue = (playerIdSum % 360); // Use player ID to generate a unique hue
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 70%)`; // Pastel color based on player ID
-        
-        // 1. Draw abdomen (rear segment) - rounder oval
-        const abdomenWidth = antWidth * 0.5;
-        const abdomenHeight = antHeight * 0.6;
-        const abdomenX = centerX + (direction === 1 ? -abdomenWidth * 0.6 : abdomenWidth * 0.6);
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.ellipse(
-            abdomenX,
-            centerY,
-            abdomenWidth / 2,
-            abdomenHeight / 2,
-            0, 0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Add a cute pattern to abdomen
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 80%)`;
-        gameState.ctx.beginPath();
-        gameState.ctx.ellipse(
-            abdomenX,
-            centerY,
-            abdomenWidth / 3,
-            abdomenHeight / 3,
-            0, 0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // 2. Draw thorax (middle segment) - rounder oval
-        const thoraxWidth = antWidth * 0.3;
-        const thoraxHeight = antHeight * 0.4;
-        const thoraxX = centerX + (direction === 1 ? thoraxWidth * 0.3 : -thoraxWidth * 0.3);
-        
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 70%)`;
-        gameState.ctx.beginPath();
-        gameState.ctx.ellipse(
-            thoraxX,
-            centerY,
-            thoraxWidth / 2,
-            thoraxHeight / 2,
-            0, 0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // 3. Draw head - rounder circle
-        const headSize = antWidth * 0.25;
-        const headX = centerX + (direction === 1 ? 
-                                thoraxWidth * 0.8 : 
-                                -thoraxWidth * 0.8);
-        const headY = centerY;
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            headX,
-            headY,
-            headSize / 2,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw cute eyes (larger and more expressive)
-        gameState.ctx.fillStyle = "#FFFFFF";
-        const eyeSize = Math.max(2, antWidth * 0.1);
-        
-        // Left eye
-        const eyeX1 = headX + (direction === 1 ? headSize * 0.15 : -headSize * 0.15);
-        const eyeY1 = headY - headSize * 0.1;
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX1,
-            eyeY1,
-            eyeSize / 2,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Right eye
-        const eyeX2 = headX + (direction === 1 ? headSize * 0.3 : -headSize * 0.3);
-        const eyeY2 = eyeY1;
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX2,
-            eyeY2,
-            eyeSize / 2,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw pupils (black dots in eyes)
-        gameState.ctx.fillStyle = "#000000";
-        
-        // Left pupil
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX1 + (direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
-            eyeY1,
-            eyeSize / 5,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Right pupil
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX2 + (direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
-            eyeY2,
-            eyeSize / 5,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw cute smile
-        gameState.ctx.strokeStyle = "#000000";
-        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.02);
-        
-        gameState.ctx.beginPath();
-        if (direction === 1) { // Facing right
-            gameState.ctx.arc(
-                headX + headSize * 0.2,
-                headY + headSize * 0.1,
-                headSize * 0.2,
-                0, Math.PI
-            );
-        } else { // Facing left
-            gameState.ctx.arc(
-                headX - headSize * 0.2,
-                headY + headSize * 0.1,
-                headSize * 0.2,
-                0, Math.PI
-            );
+        // Draw player direction indicator
+        gameState.ctx.fillStyle = '#000000';
+        if (player.direction > 0) {
+            // Facing right
+            gameState.ctx.fillRect(player.x + (player.width || 20) - 5, player.y + 5, 5, 5);
+        } else {
+            // Facing left
+            gameState.ctx.fillRect(player.x, player.y + 5, 5, 5);
         }
-        gameState.ctx.stroke();
         
-        // Draw antennae (cuter, more curved)
-        gameState.ctx.strokeStyle = `hsl(${hue}, 80%, 70%)`;
-        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
-        
-        // First antenna
-        const antennaBaseX = headX + (direction === 1 ? headSize * 0.2 : -headSize * 0.2);
-        const antennaBaseY = headY - headSize * 0.3;
-        const antennaEndX = antennaBaseX + (direction === 1 ? headSize * 0.8 : -headSize * 0.8);
-        const antennaEndY = antennaBaseY - headSize * 0.7;
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(antennaBaseX, antennaBaseY);
-        gameState.ctx.bezierCurveTo(
-            antennaBaseX + (direction === 1 ? headSize * 0.4 : -headSize * 0.4),
-            antennaBaseY - headSize * 0.5,
-            antennaEndX - (direction === 1 ? headSize * 0.2 : -headSize * 0.2),
-            antennaEndY - headSize * 0.2,
-            antennaEndX,
-            antennaEndY
-        );
-        gameState.ctx.stroke();
-        
-        // Add cute antenna tips (small circles)
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 80%)`;
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            antennaEndX,
-            antennaEndY,
-            Math.max(1, antWidth * 0.04),
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw a thin "waist" connecting thorax and abdomen
-        gameState.ctx.strokeStyle = `hsl(${hue}, 80%, 70%)`;
-        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            thoraxX + (direction === 1 ? -thoraxWidth / 2 : thoraxWidth / 2),
-            centerY
-        );
-        gameState.ctx.lineTo(
-            abdomenX + (direction === 1 ? abdomenWidth / 2 : -abdomenWidth / 2),
-            centerY
-        );
-        gameState.ctx.stroke();
-        
-        // Draw player ID above head
-        gameState.ctx.fillStyle = 'white';
+        // Draw player ID above
+        gameState.ctx.fillStyle = '#FFFFFF';
         gameState.ctx.font = '12px Arial';
         gameState.ctx.textAlign = 'center';
-        gameState.ctx.fillText(
-            id.substring(0, 5) + '...',
-            Math.round((player.x - gameState.camera.x + playerWidth / 2) * gameState.zoom),
-            Math.round((player.y - gameState.camera.y - 10) * gameState.zoom)
-        );
+        gameState.ctx.fillText(player.id.substring(0, 5) + '...', player.x + (player.width || 20) / 2, player.y - 5);
     }
+    
+    // Restore context state
+    gameState.ctx.restore();
 }
 
 // Show player info on screen
 function showPlayerInfo() {
-    // Create player info element if it doesn't exist
-    let playerInfo = document.getElementById('player-info');
-    if (!playerInfo) {
-        playerInfo = document.createElement('div');
+    const playerInfoElement = document.getElementById('player-info');
+    
+    if (!playerInfoElement) {
+        // Create player info element if it doesn't exist
+        const playerInfo = document.createElement('div');
         playerInfo.id = 'player-info';
-        document.body.appendChild(playerInfo);
+        playerInfo.className = 'game-info';
+        document.getElementById('ui').appendChild(playerInfo);
     }
     
-    // Count connected players
-    const connectedPlayersCount = Object.keys(otherPlayers).length + 1; // +1 for the current player
+    // Update player info
+    const playerInfo = document.getElementById('player-info');
     
-    // Get FPS from game state
-    const fps = window.gameState && window.gameState.fps ? Math.round(window.gameState.fps) : 0;
-    
-    // Update player info with all requested information
-    playerInfo.innerHTML = `
-        <div>Connected players: ${connectedPlayersCount}</div>
-        <div>Your ID: ${playerId.substring(0, 5)}...</div>
-        <div>FPS: ${fps}</div>
-    `;
-    
-    // Position at bottom left
-    playerInfo.style.position = 'absolute';
-    playerInfo.style.bottom = '10px';
-    playerInfo.style.left = '10px';
-    playerInfo.style.color = 'white';
-    playerInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    playerInfo.style.padding = '5px';
-    playerInfo.style.borderRadius = '5px';
-    playerInfo.style.fontFamily = 'Arial, sans-serif';
-    playerInfo.style.fontSize = '14px';
-    playerInfo.style.zIndex = '100';
+    if (playerInfo) {
+        // Count connected players
+        const playerCount = Object.keys(otherPlayers).length + 1; // +1 for self
+        
+        playerInfo.innerHTML = `
+            <div>Player ID: ${playerId ? playerId.substring(0, 5) + '...' : 'Not connected'}</div>
+            <div>Players Online: ${playerCount}</div>
+            <div>Connection: ${socket && socket.connected ? 'Connected' : 'Disconnected'}</div>
+        `;
+    }
 }
 
 // Show notification
 function showNotification(message) {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = 'notification';
-    notification.textContent = message;
+    // Create notification element if it doesn't exist
+    let notificationElement = document.getElementById('notification');
     
-    // Style notification
-    notification.style.position = 'absolute';
-    notification.style.top = '50px';
-    notification.style.left = '50%';
-    notification.style.transform = 'translateX(-50%)';
-    notification.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    notification.style.color = 'white';
-    notification.style.padding = '10px';
-    notification.style.borderRadius = '5px';
-    notification.style.zIndex = '1000';
+    if (!notificationElement) {
+        notificationElement = document.createElement('div');
+        notificationElement.id = 'notification';
+        document.body.appendChild(notificationElement);
+        
+        // Add CSS for notifications
+        const style = document.createElement('style');
+        style.textContent = `
+            #notification {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                z-index: 1000;
+                transition: opacity 0.5s;
+                opacity: 0;
+            }
+            
+            #notification.show {
+                opacity: 1;
+            }
+        `;
+        document.head.appendChild(style);
+    }
     
-    // Add to document
-    document.body.appendChild(notification);
+    // Set message
+    notificationElement.textContent = message;
     
-    // Remove after 3 seconds
+    // Show notification
+    notificationElement.classList.add('show');
+    
+    // Hide after 3 seconds
     setTimeout(() => {
-        document.body.removeChild(notification);
+        notificationElement.classList.remove('show');
     }, 3000);
 }
 
@@ -582,269 +464,148 @@ function showNotification(message) {
 function getTileColor(tileType) {
     switch (tileType) {
         case TILE_TYPES.DIRT:
-            return '#8B4513';
+            return '#8B4513'; // Brown
         case TILE_TYPES.STONE:
-            return '#808080';
+            return '#808080'; // Gray
         case TILE_TYPES.GRASS:
-            return '#228B22';
+            return '#7CFC00'; // Green
         case TILE_TYPES.SAND:
-            return '#F0E68C';
+            return '#F0E68C'; // Khaki
+        case TILE_TYPES.ORE:
+            return '#A0A0A0'; // Light gray
         case TILE_TYPES.COAL:
-            return '#2F4F4F';
+            return '#303030'; // Dark gray
         case TILE_TYPES.IRON:
-            return '#CD853F';
+            return '#C0C0C0'; // Silver
         case TILE_TYPES.GOLD:
-            return '#FFD700';
+            return '#FFD700'; // Gold
         case TILE_TYPES.DIAMOND:
-            return '#00BFFF';
+            return '#00FFFF'; // Cyan
         default:
-            return '#FFFFFF';
+            return '#FFFFFF'; // White
     }
 }
 
 // Create digging particles
 function createDiggingParticles(x, y, color) {
-    // Create 10 particles
+    // Create particles at the given position
     for (let i = 0; i < 10; i++) {
         const particle = {
             x: x,
             y: y,
-            velocityX: (Math.random() - 0.5) * 5,
-            velocityY: (Math.random() - 0.5) * 5,
+            velocityX: (Math.random() - 0.5) * 2,
+            velocityY: (Math.random() - 0.5) * 2,
             size: 2 + Math.random() * 3,
             color: color,
-            expireTime: Date.now() + 1000 + Math.random() * 500
+            life: 30 + Math.random() * 30
         };
         
         gameState.particles.push(particle);
     }
 }
 
-// Draw other players directly in world coordinates (used when ctx is already transformed)
+// Draw other players directly (for WebGL rendering)
 function drawOtherPlayersDirect() {
+    // Skip if no WebGL renderer
+    if (!gameState.renderer) return;
+    
+    // Clear existing other player sprites
+    if (!gameState.otherPlayerSprites) {
+        gameState.otherPlayerSprites = {};
+    }
+    
+    // Draw each player
     for (const id in otherPlayers) {
         const player = otherPlayers[id];
         
-        // Set default values if properties are missing
-        const playerWidth = player.width || 20;
-        const playerHeight = player.height || 30;
+        // Skip if player has no position
+        if (player.x === undefined || player.y === undefined) continue;
         
-        // Use the player's actual world coordinates
-        const playerX = player.x;
-        const playerY = player.y;
-        
-        // Use a consistent size based on player dimensions
-        const antWidth = playerWidth * 0.9;  // 90% of player width
-        const antHeight = playerHeight * 0.9; // 90% of player height
-        
-        // Calculate center position for the ant
-        const centerX = playerX + playerWidth / 2;
-        const centerY = playerY + playerHeight / 2;
-        
-        // Get player direction (default to 1 if not specified)
-        const direction = player.direction || 1;
-        
-        // Draw ant with three body segments - using a cute color scheme with slight variation
-        // Use a different color for each player based on their ID
-        const playerIdSum = id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const hue = (playerIdSum % 360); // Use player ID to generate a unique hue
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 70%)`; // Pastel color based on player ID
-        
-        // 1. Draw abdomen (rear segment) - rounder oval
-        const abdomenWidth = antWidth * 0.5;
-        const abdomenHeight = antHeight * 0.6;
-        const abdomenX = centerX + (direction === 1 ? -abdomenWidth * 0.6 : abdomenWidth * 0.6);
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.ellipse(
-            abdomenX,
-            centerY,
-            abdomenWidth / 2,
-            abdomenHeight / 2,
-            0, 0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Add a cute pattern to abdomen
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 80%)`;
-        gameState.ctx.beginPath();
-        gameState.ctx.ellipse(
-            abdomenX,
-            centerY,
-            abdomenWidth / 3,
-            abdomenHeight / 3,
-            0, 0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // 2. Draw thorax (middle segment) - rounder oval
-        const thoraxWidth = antWidth * 0.3;
-        const thoraxHeight = antHeight * 0.4;
-        const thoraxX = centerX + (direction === 1 ? thoraxWidth * 0.3 : -thoraxWidth * 0.3);
-        
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 70%)`;
-        gameState.ctx.beginPath();
-        gameState.ctx.ellipse(
-            thoraxX,
-            centerY,
-            thoraxWidth / 2,
-            thoraxHeight / 2,
-            0, 0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // 3. Draw head - rounder circle
-        const headSize = antWidth * 0.25;
-        const headX = centerX + (direction === 1 ? 
-                                thoraxWidth * 0.8 : 
-                                -thoraxWidth * 0.8);
-        const headY = centerY;
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            headX,
-            headY,
-            headSize / 2,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw cute eyes (larger and more expressive)
-        gameState.ctx.fillStyle = "#FFFFFF";
-        const eyeSize = Math.max(2, antWidth * 0.1);
-        
-        // Left eye
-        const eyeX1 = headX + (direction === 1 ? headSize * 0.15 : -headSize * 0.15);
-        const eyeY1 = headY - headSize * 0.1;
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX1,
-            eyeY1,
-            eyeSize / 2,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Right eye
-        const eyeX2 = headX + (direction === 1 ? headSize * 0.3 : -headSize * 0.3);
-        const eyeY2 = eyeY1;
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX2,
-            eyeY2,
-            eyeSize / 2,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw pupils (black dots in eyes)
-        gameState.ctx.fillStyle = "#000000";
-        
-        // Left pupil
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX1 + (direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
-            eyeY1,
-            eyeSize / 5,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Right pupil
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            eyeX2 + (direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
-            eyeY2,
-            eyeSize / 5,
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw cute smile
-        gameState.ctx.strokeStyle = "#000000";
-        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.02);
-        
-        gameState.ctx.beginPath();
-        if (direction === 1) { // Facing right
-            gameState.ctx.arc(
-                headX + headSize * 0.2,
-                headY + headSize * 0.1,
-                headSize * 0.2,
-                0, Math.PI
-            );
-        } else { // Facing left
-            gameState.ctx.arc(
-                headX - headSize * 0.2,
-                headY + headSize * 0.1,
-                headSize * 0.2,
-                0, Math.PI
-            );
+        // Create sprite if it doesn't exist
+        if (!gameState.otherPlayerSprites[id]) {
+            const sprite = new PIXI.Graphics();
+            sprite.beginFill(parseInt(player.color.replace('#', '0x')) || 0xFF0000);
+            sprite.drawRect(0, 0, player.width || 20, player.height || 30);
+            sprite.endFill();
+            
+            // Add direction indicator
+            sprite.beginFill(0x000000);
+            if (player.direction > 0) {
+                // Facing right
+                sprite.drawRect((player.width || 20) - 5, 5, 5, 5);
+            } else {
+                // Facing left
+                sprite.drawRect(0, 5, 5, 5);
+            }
+            sprite.endFill();
+            
+            // Add to stage
+            gameState.stage.addChild(sprite);
+            
+            // Store sprite
+            gameState.otherPlayerSprites[id] = sprite;
         }
-        gameState.ctx.stroke();
         
-        // Draw antennae (cuter, more curved)
-        gameState.ctx.strokeStyle = `hsl(${hue}, 80%, 70%)`;
-        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
+        // Update sprite position
+        const sprite = gameState.otherPlayerSprites[id];
+        sprite.x = player.x;
+        sprite.y = player.y;
         
-        // First antenna
-        const antennaBaseX = headX + (direction === 1 ? headSize * 0.2 : -headSize * 0.2);
-        const antennaBaseY = headY - headSize * 0.3;
-        const antennaEndX = antennaBaseX + (direction === 1 ? headSize * 0.8 : -headSize * 0.8);
-        const antennaEndY = antennaBaseY - headSize * 0.7;
+        // Update direction indicator
+        sprite.clear();
+        sprite.beginFill(parseInt(player.color.replace('#', '0x')) || 0xFF0000);
+        sprite.drawRect(0, 0, player.width || 20, player.height || 30);
+        sprite.endFill();
         
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(antennaBaseX, antennaBaseY);
-        gameState.ctx.bezierCurveTo(
-            antennaBaseX + (direction === 1 ? headSize * 0.4 : -headSize * 0.4),
-            antennaBaseY - headSize * 0.5,
-            antennaEndX - (direction === 1 ? headSize * 0.2 : -headSize * 0.2),
-            antennaEndY - headSize * 0.2,
-            antennaEndX,
-            antennaEndY
-        );
-        gameState.ctx.stroke();
+        sprite.beginFill(0x000000);
+        if (player.direction > 0) {
+            // Facing right
+            sprite.drawRect((player.width || 20) - 5, 5, 5, 5);
+        } else {
+            // Facing left
+            sprite.drawRect(0, 5, 5, 5);
+        }
+        sprite.endFill();
         
-        // Add cute antenna tips (small circles)
-        gameState.ctx.fillStyle = `hsl(${hue}, 80%, 80%)`;
-        gameState.ctx.beginPath();
-        gameState.ctx.arc(
-            antennaEndX,
-            antennaEndY,
-            Math.max(1, antWidth * 0.04),
-            0, Math.PI * 2
-        );
-        gameState.ctx.fill();
-        
-        // Draw a thin "waist" connecting thorax and abdomen
-        gameState.ctx.strokeStyle = `hsl(${hue}, 80%, 70%)`;
-        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            thoraxX + (direction === 1 ? -thoraxWidth / 2 : thoraxWidth / 2),
-            centerY
-        );
-        gameState.ctx.lineTo(
-            abdomenX + (direction === 1 ? abdomenWidth / 2 : -abdomenWidth / 2),
-            centerY
-        );
-        gameState.ctx.stroke();
-        
-        // Draw player ID above head (in world coordinates)
-        gameState.ctx.fillStyle = 'white';
-        gameState.ctx.font = '12px Arial';
-        gameState.ctx.textAlign = 'center';
-        gameState.ctx.fillText(
-            id.substring(0, 5) + '...',
-            playerX + playerWidth / 2,
-            playerY - 10
-        );
+        // Add player ID text
+        if (!sprite.text) {
+            const text = new PIXI.Text(player.id.substring(0, 5) + '...', {
+                fontFamily: 'Arial',
+                fontSize: 12,
+                fill: 0xFFFFFF,
+                align: 'center'
+            });
+            text.anchor.set(0.5, 1);
+            text.x = (player.width || 20) / 2;
+            text.y = -5;
+            
+            sprite.addChild(text);
+            sprite.text = text;
+        }
+    }
+    
+    // Remove sprites for disconnected players
+    for (const id in gameState.otherPlayerSprites) {
+        if (!otherPlayers[id]) {
+            // Remove from stage
+            gameState.stage.removeChild(gameState.otherPlayerSprites[id]);
+            
+            // Delete sprite
+            delete gameState.otherPlayerSprites[id];
+        }
     }
 }
 
+// Initialize multiplayer when the page loads
+window.addEventListener('load', () => {
+    console.log("Initializing multiplayer...");
+    // Initialize multiplayer after a short delay to allow the game to initialize first
+    setTimeout(initializeMultiplayer, 1000);
+});
+
 // Export functions for use in other modules
-window.drawOtherPlayers = drawOtherPlayers;
-window.drawOtherPlayersDirect = drawOtherPlayersDirect;
 window.requestChunk = requestChunk;
-window.sendBlockDig = sendBlockDig; 
+window.sendBlockDig = sendBlockDig;
+
+// Log that the functions have been exported
+console.log("Multiplayer functions exported to window object"); 

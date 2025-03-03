@@ -1,5 +1,7 @@
 // Handle input events
 function setupEventListeners() {
+    console.log("Setting up event listeners from input.js");
+    
     // Keyboard events
     window.addEventListener('keydown', (e) => {
         gameState.keys[e.code] = true;
@@ -19,77 +21,51 @@ function setupEventListeners() {
         const rect = gameState.canvas.getBoundingClientRect();
         gameState.mouseX = e.clientX - rect.left;
         gameState.mouseY = e.clientY - rect.top;
+        
+        // Also update mouse object for backward compatibility
+        gameState.mouse.x = gameState.mouseX;
+        gameState.mouse.y = gameState.mouseY;
     });
     
     gameState.canvas.addEventListener('mousedown', (e) => {
+        console.log("Mouse down event triggered");
         gameState.mouseDown = true;
+        gameState.mouse.leftPressed = true;
         
         // Update mouse position before handling digging
         const rect = gameState.canvas.getBoundingClientRect();
         gameState.mouseX = e.clientX - rect.left;
         gameState.mouseY = e.clientY - rect.top;
         
+        // Also update mouse object for backward compatibility
+        gameState.mouse.x = gameState.mouseX;
+        gameState.mouse.y = gameState.mouseY;
+        
+        console.log(`Mouse position: (${gameState.mouseX}, ${gameState.mouseY})`);
+        console.log(`Mouse down state: ${gameState.mouseDown}`);
+        
         // Only call handleDigging if mouse is down
         if (gameState.mouseDown) {
+            console.log("Calling handleDigging from mousedown event");
             handleDigging();
         }
     });
     
-    gameState.canvas.addEventListener('mouseup', () => {
+    gameState.canvas.addEventListener('mouseup', (e) => {
+        console.log("Mouse up event triggered");
         gameState.mouseDown = false;
+        gameState.mouse.leftPressed = false;
     });
     
     // Mouse wheel for zooming
     gameState.canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
         
-        // Set zooming flag to disable particle animations
-        gameState.isZooming = true;
-        
-        // Clear any existing zoom timeout
-        if (gameState.zoomTimeout) {
-            clearTimeout(gameState.zoomTimeout);
-        }
-        
         // Determine zoom direction
         const zoomAmount = e.deltaY > 0 ? -0.1 : 0.1;
         
-        // Store old zoom for calculations
-        const oldZoom = gameState.zoom;
-        
         // Calculate new zoom level
-        const newZoom = Math.max(
-            gameState.minZoom, 
-            Math.min(gameState.maxZoom, gameState.zoom + zoomAmount)
-        );
-        
-        // Get mouse position relative to canvas
-        const rect = gameState.canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        
-        // Calculate world coordinates under the mouse
-        const worldX = gameState.camera.x + (mouseX / oldZoom);
-        const worldY = gameState.camera.y + (mouseY / oldZoom);
-        
-        // Apply zoom
-        gameState.zoom = newZoom;
-        
-        // Adjust camera to keep the world point under the mouse fixed
-        gameState.camera.x = worldX - (mouseX / newZoom);
-        gameState.camera.y = worldY - (mouseY / newZoom);
-        
-        // Update camera target to match new position
-        gameState.camera.targetX = gameState.camera.x;
-        gameState.camera.targetY = gameState.camera.y;
-        
-        // Show zoom level indicator
-        showZoomIndicator();
-        
-        // Set a timeout to reset the zooming flag after zooming stops
-        gameState.zoomTimeout = setTimeout(() => {
-            gameState.isZooming = false;
-        }, 500); // 500ms delay
+        gameState.zoom = Math.max(0.5, Math.min(2, gameState.zoom + zoomAmount));
     });
     
     // Handle window resize
@@ -159,6 +135,7 @@ function handleInput() {
     
     // Handle digging/attacking with mouse
     if (gameState.mouseDown) {
+        console.log("Calling handleDigging from handleInput");
         handleDigging();
     }
     
@@ -250,8 +227,8 @@ function handleDigging() {
             setTile(tileX, tileY, TILE_TYPES.AIR);
             
             // Update UI
-            updateInventoryDisplay();
-            updateScoreDisplay();
+            updateInventoryUI();
+            updateScoreUI();
             
             // Mark world as having unsaved changes
             gameState.hasUnsavedChanges = true;
@@ -282,7 +259,7 @@ function handleDigging() {
                     
                     // Add score for killing enemy
                     gameState.score += 25;
-                    updateScoreDisplay();
+                    updateScoreUI();
                 }
             }
         }
@@ -290,7 +267,7 @@ function handleDigging() {
 }
 
 // Update inventory display
-function updateInventoryDisplay() {
+function updateInventoryUI() {
     // Call the centralized UI update function from ui.js
     if (typeof window.updateInventoryDisplay === 'function') {
         window.updateInventoryDisplay();
@@ -298,7 +275,7 @@ function updateInventoryDisplay() {
 }
 
 // Update score display
-function updateScoreDisplay() {
+function updateScoreUI() {
     // Call the centralized UI update function from ui.js
     if (typeof window.updateScoreDisplay === 'function') {
         window.updateScoreDisplay();
@@ -457,4 +434,8 @@ function createDebugOverlay() {
     updateDebugInfo();
     
     return overlay;
-} 
+}
+
+// Expose functions to window object
+window.setupEventListeners = setupEventListeners;
+window.handleInput = handleInput; 

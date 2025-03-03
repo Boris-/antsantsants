@@ -3,6 +3,7 @@ const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
 const cors = require('cors');
+const fs = require('fs');
 
 // Create Express app
 const app = express();
@@ -20,15 +21,24 @@ app.use(cors());
 // Serve static files from the current directory
 app.use(express.static(__dirname));
 
+// World save file path
+const WORLD_SAVE_PATH = path.join(__dirname, 'world_save.json');
+
 // Game state
-const gameState = {
+let gameState = {
     players: {},
     chunks: {},
     worldSeed: Math.floor(Math.random() * 1000000),
     terrainHeights: [],
     biomeMap: [],
     // Add a map to track recent block updates
-    recentBlockUpdates: new Map()
+    recentBlockUpdates: new Map(),
+    // Add world metadata
+    worldMetadata: {
+        createdAt: Date.now(),
+        lastSaved: null,
+        blockUpdates: 0
+    }
 };
 
 // Import world generation functions
@@ -52,19 +62,95 @@ setInterval(cleanupRecentBlockUpdates, 30000);
 
 // Initialize world
 function initializeWorld() {
-    console.log('Initializing world with seed:', gameState.worldSeed);
-    
-    // Initialize biomes
-    worldGeneration.initializeBiomes(gameState);
-    
-    // Generate biome map
-    gameState.biomeMap = worldGeneration.generateBiomeMap(gameState);
-    
-    // Generate terrain heights
-    worldGeneration.generateTerrainHeights(gameState);
-    
-    console.log('World initialized successfully');
+    // Try to load existing world first
+    if (loadWorld()) {
+        console.log('Loaded existing world with seed:', gameState.worldSeed);
+    } else {
+        console.log('Initializing new world with seed:', gameState.worldSeed);
+        
+        // Initialize biomes
+        worldGeneration.initializeBiomes(gameState);
+        
+        // Generate biome map
+        gameState.biomeMap = worldGeneration.generateBiomeMap(gameState);
+        
+        // Generate terrain heights
+        worldGeneration.generateTerrainHeights(gameState);
+        
+        console.log('World initialized successfully');
+        
+        // Save the newly generated world
+        saveWorld();
+    }
 }
+
+// Save world state to file
+function saveWorld() {
+    try {
+        // Create a copy of the game state without non-serializable data
+        const saveData = {
+            worldSeed: gameState.worldSeed,
+            terrainHeights: gameState.terrainHeights,
+            biomeMap: gameState.biomeMap,
+            chunks: gameState.chunks,
+            worldMetadata: {
+                ...gameState.worldMetadata,
+                lastSaved: Date.now()
+            }
+        };
+        
+        // Write to file
+        fs.writeFileSync(WORLD_SAVE_PATH, JSON.stringify(saveData));
+        console.log('World saved successfully');
+        return true;
+    } catch (error) {
+        console.error('Error saving world:', error);
+        return false;
+    }
+}
+
+// Load world state from file
+function loadWorld() {
+    try {
+        // Check if save file exists
+        if (!fs.existsSync(WORLD_SAVE_PATH)) {
+            console.log('No saved world found');
+            return false;
+        }
+        
+        // Read and parse save file
+        const saveData = JSON.parse(fs.readFileSync(WORLD_SAVE_PATH));
+        
+        // Update game state with loaded data
+        gameState.worldSeed = saveData.worldSeed;
+        gameState.terrainHeights = saveData.terrainHeights;
+        gameState.biomeMap = saveData.biomeMap;
+        gameState.chunks = saveData.chunks;
+        gameState.worldMetadata = saveData.worldMetadata || {
+            createdAt: Date.now(),
+            lastSaved: Date.now(),
+            blockUpdates: 0
+        };
+        
+        // Initialize biomes if not loaded
+        if (!gameState.biomeTypes) {
+            worldGeneration.initializeBiomes(gameState);
+        }
+        
+        console.log('World loaded successfully');
+        return true;
+    } catch (error) {
+        console.error('Error loading world:', error);
+        return false;
+    }
+}
+
+// Auto-save world periodically
+const AUTO_SAVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+setInterval(() => {
+    console.log('Auto-saving world...');
+    saveWorld();
+}, AUTO_SAVE_INTERVAL);
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -177,6 +263,9 @@ io.on('connection', (socket) => {
                     // Record this update time
                     gameState.recentBlockUpdates.set(blockKey, now);
                     
+                    // Increment block updates counter
+                    gameState.worldMetadata.blockUpdates++;
+                    
                     // If an item was collected, update the player's inventory
                     if (itemCollected && gameState.players[socket.id]) {
                         // Ensure the inventory property exists
@@ -197,6 +286,11 @@ io.on('connection', (socket) => {
                         playerId: socket.id,
                         originalTileType
                     });
+                    
+                    // Save world after significant changes (every 100 block updates)
+                    if (gameState.worldMetadata.blockUpdates % 100 === 0) {
+                        saveWorld();
+                    }
                 }
             }
         }
@@ -249,11 +343,24 @@ function getRandomColor() {
     return colors[Math.floor(Math.random() * colors.length)];
 }
 
-// Initialize the world
+// Initialize world before starting server
 initializeWorld();
 
-// Start the server
+// Start server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+    console.log('Server shutting down, saving world...');
+    saveWorld();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('Server shutting down, saving world...');
+    saveWorld();
+    process.exit(0);
 }); 

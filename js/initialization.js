@@ -46,6 +46,9 @@ function initializeGameState() {
         },
         zoom: 1,
         keys: {},
+        mouseDown: false,
+        mouseX: 0,
+        mouseY: 0,
         mouse: {
             x: 0,
             y: 0,
@@ -87,7 +90,7 @@ function initializeGameState() {
     spawnPlayer();
     
     // Set up event listeners
-    setupEventListeners();
+    // setupEventListeners();
     
     // Initialize UI
     initializeUI();
@@ -155,6 +158,7 @@ function spawnPlayer() {
 }
 
 // Set up event listeners
+/*
 function setupEventListeners() {
     // Keyboard events
     window.addEventListener('keydown', (e) => {
@@ -221,6 +225,7 @@ function setupEventListeners() {
         window.gameState.canvas.height = window.innerHeight;
     });
 }
+*/
 
 // Play a sound
 function playSound(soundName) {

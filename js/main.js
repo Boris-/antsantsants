@@ -5,6 +5,14 @@ window.addEventListener('load', () => {
     // Initialize the game state
     initializeGameState();
     
+    // Set up event listeners
+    if (typeof window.setupEventListeners === 'function') {
+        window.setupEventListeners();
+        console.log('Event listeners set up from main.js');
+    } else {
+        console.error('setupEventListeners function not found!');
+    }
+    
     // Initialize UI after game state is initialized
     if (typeof window.initializeUI === 'function') {
         window.initializeUI();
