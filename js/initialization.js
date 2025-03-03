@@ -13,6 +13,7 @@ function initializeGameState() {
         canvas: canvas,
         ctx: ctx,
         chunks: {},
+        loadedChunks: new Set(), // Track loaded chunks for multiplayer
         terrainHeights: {},
         biomeMap: {},
         player: {
@@ -60,7 +61,10 @@ function initializeGameState() {
             showFPS: false,
             showChunkBorders: false,
             godMode: false
-        }
+        },
+        // Multiplayer specific properties
+        lastPositionUpdate: 0,
+        isMultiplayer: true
     };
     
     // Initialize world
@@ -78,30 +82,34 @@ function initializeGameState() {
 
 // Initialize world
 function initializeWorld() {
-    // Initialize biomes first - this will store biomeTypes in gameState
-    const biomeTypes = initializeBiomes();
-    
-    // Generate biome map using the initialized biome types
-    gameState.biomeMap = generateBiomeMap();
-    
-    // Generate terrain heights for the entire world (now that biomes are available)
-    generateTerrainHeights();
-    
-    // Generate initial chunks around player
-    generateInitialChunks();
+    // In multiplayer mode, world generation happens on the server
+    if (!gameState.isMultiplayer) {
+        // Initialize biomes first - this will store biomeTypes in gameState
+        const biomeTypes = initializeBiomes();
+        
+        // Generate biome map using the initialized biome types
+        gameState.biomeMap = generateBiomeMap();
+        
+        // Generate terrain heights for the entire world (now that biomes are available)
+        generateTerrainHeights();
+        
+        // Generate initial chunks around player
+        generateInitialChunks();
+    }
 }
 
 // Generate initial chunks around player
 function generateInitialChunks() {
+    // In multiplayer mode, chunks are requested from the server
+    if (gameState.isMultiplayer) return;
+    
     // Calculate player chunk
     const playerChunkX = Math.floor(gameState.player.x / (CHUNK_SIZE * TILE_SIZE));
     const playerChunkY = Math.floor(gameState.player.y / (CHUNK_SIZE * TILE_SIZE));
     
     // Generate chunks in a 5x5 area around player
-    const renderDistance = 2;
-    
-    for (let y = playerChunkY - renderDistance; y <= playerChunkY + renderDistance; y++) {
-        for (let x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
+    for (let y = playerChunkY - 2; y <= playerChunkY + 2; y++) {
+        for (let x = playerChunkX - 2; x <= playerChunkX + 2; x++) {
             generateChunk(x, y);
         }
     }
@@ -109,8 +117,13 @@ function generateInitialChunks() {
 
 // Spawn player at a suitable location
 function spawnPlayer() {
-    // Find a suitable spawn point (on grass)
-    let spawnX = Math.floor(WORLD_WIDTH / 2);
+    // Find a suitable spawn point (on grass) with some randomization
+    // Add a small random offset from the center (between -50 and 50 tiles)
+    const randomOffset = Math.floor(Math.random() * 100) - 50;
+    let spawnX = Math.floor(WORLD_WIDTH / 2) + randomOffset;
+    
+    // Ensure spawn point is within world bounds
+    spawnX = Math.max(10, Math.min(WORLD_WIDTH - 10, spawnX));
     
     // Get terrain height at spawn X
     const terrainHeight = getTerrainHeight(spawnX);
@@ -399,4 +412,71 @@ function updateCamera() {
     // Clamp camera to world bounds
     gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH * TILE_SIZE - gameState.canvas.width / gameState.zoom));
     gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - gameState.canvas.height / gameState.zoom));
+}
+
+// Place player safely above the terrain
+function placePlayerSafely() {
+    // Find a relatively flat area for the player
+    let spawnX = Math.floor(WORLD_WIDTH / 2);
+    
+    // Get terrain height at spawn position
+    const terrainHeight = gameState.terrainHeights[spawnX] || 0;
+    
+    // Set player position
+    gameState.player.x = spawnX * TILE_SIZE;
+    gameState.player.y = (terrainHeight - 2) * TILE_SIZE; // Place player 2 tiles above the surface
+    
+    // Center camera on player
+    gameState.camera.x = gameState.player.x - gameState.canvas.width / 2;
+    gameState.camera.y = gameState.player.y - gameState.canvas.height / 2;
+}
+
+// Add to inventory
+function addToInventory(tileType) {
+    // Convert tile type to inventory item name
+    let itemName;
+    switch (tileType) {
+        case TILE_TYPES.DIRT:
+            itemName = 'dirt';
+            break;
+        case TILE_TYPES.STONE:
+            itemName = 'stone';
+            break;
+        case TILE_TYPES.GRASS:
+            itemName = 'grass';
+            break;
+        case TILE_TYPES.SAND:
+            itemName = 'sand';
+            break;
+        case TILE_TYPES.COAL:
+            itemName = 'coal';
+            break;
+        case TILE_TYPES.IRON:
+            itemName = 'iron';
+            break;
+        case TILE_TYPES.GOLD:
+            itemName = 'gold';
+            break;
+        case TILE_TYPES.DIAMOND:
+            itemName = 'diamond';
+            break;
+        default:
+            itemName = 'unknown';
+    }
+    
+    // Add to inventory
+    gameState.inventory[itemName] = (gameState.inventory[itemName] || 0) + 1;
+    
+    // Update score based on item value
+    if (tileType === TILE_TYPES.COAL) {
+        gameState.score += 5;
+    } else if (tileType === TILE_TYPES.IRON) {
+        gameState.score += 10;
+    } else if (tileType === TILE_TYPES.GOLD) {
+        gameState.score += 25;
+    } else if (tileType === TILE_TYPES.DIAMOND) {
+        gameState.score += 100;
+    } else {
+        gameState.score += 1;
+    }
 } 

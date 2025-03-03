@@ -1,3 +1,42 @@
+// Game logic module
+
+// Reference to multiplayer functions - using different variable names to avoid conflicts
+let _requestChunk = () => {}; // Default empty function
+let _sendBlockDig = () => {}; // Default empty function
+
+// Track recently dug blocks to prevent duplicate particle creation
+const recentlyDugBlocks = new Map();
+
+// Cleanup function for recentlyDugBlocks map
+function cleanupRecentlyDugBlocks() {
+    const now = Date.now();
+    const expirationTime = 10000; // 10 seconds
+    
+    // Remove entries older than expirationTime
+    for (const [key, timestamp] of recentlyDugBlocks.entries()) {
+        if (now - timestamp > expirationTime) {
+            recentlyDugBlocks.delete(key);
+        }
+    }
+}
+
+// Run cleanup every 30 seconds
+setInterval(cleanupRecentlyDugBlocks, 30000);
+
+// Set up references to multiplayer functions
+function setupMultiplayerReferences() {
+    // Check if multiplayer functions exist
+    if (typeof window.requestChunk === 'function') {
+        _requestChunk = window.requestChunk;
+    }
+    if (typeof window.sendBlockDig === 'function') {
+        _sendBlockDig = window.sendBlockDig;
+    }
+}
+
+// Call setup when the script loads
+window.addEventListener('load', setupMultiplayerReferences);
+
 // Helper function to get a chunk by coordinates
 function getChunk(chunkX, chunkY) {
     const chunkKey = `${chunkX},${chunkY}`;
@@ -14,7 +53,7 @@ function gameLoop(timestamp) {
     updateGame(deltaTime);
     
     // Render game
-    renderGame();
+    renderGameInternal();
     
     // Request next frame
     requestAnimationFrame(gameLoop);
@@ -43,6 +82,15 @@ function updateGame(deltaTime) {
     
     // Update particles
     updateParticles(deltaTime);
+    
+    // Send player position to server (for multiplayer)
+    if (socket && socket.connected && gameState.lastPositionUpdate + 50 < Date.now()) {
+        sendPlayerPosition();
+        gameState.lastPositionUpdate = Date.now();
+    }
+    
+    // Request new chunks if needed
+    checkAndRequestChunks();
 }
 
 // Update camera
@@ -233,6 +281,13 @@ function handlePlayerMovement() {
             gameState.player.y = newY;
         }
     }
+    
+    // Update player direction for multiplayer
+    if (gameState.player.velocityX > 0) {
+        gameState.player.direction = 1;
+    } else if (gameState.player.velocityX < 0) {
+        gameState.player.direction = -1;
+    }
 }
 
 // Check for collision at the specified position
@@ -278,82 +333,78 @@ function checkCollision(x, y) {
 function handleDigging() {
     // Check if mouse is pressed
     if (gameState.mouse.leftPressed) {
-        // Calculate world coordinates of mouse
-        const worldX = gameState.mouse.x / gameState.zoom + gameState.camera.x;
-        const worldY = gameState.mouse.y / gameState.zoom + gameState.camera.y;
+        // Calculate mouse position in world coordinates
+        const mouseWorldX = gameState.mouse.x / gameState.zoom + gameState.camera.x;
+        const mouseWorldY = gameState.mouse.y / gameState.zoom + gameState.camera.y;
         
-        // Calculate tile coordinates
-        const tileX = Math.floor(worldX / TILE_SIZE);
-        const tileY = Math.floor(worldY / TILE_SIZE);
+        // Calculate distance from player to mouse
+        const distanceToMouse = Math.sqrt(
+            Math.pow(mouseWorldX - (gameState.player.x + gameState.player.width / 2), 2) +
+            Math.pow(mouseWorldY - (gameState.player.y + gameState.player.height / 2), 2)
+        );
         
-        // Calculate distance to player center
-        const playerCenterX = gameState.player.x + gameState.player.width / 2;
-        const playerCenterY = gameState.player.y + gameState.player.height / 2;
-        const tileCenterX = tileX * TILE_SIZE + TILE_SIZE / 2;
-        const tileCenterY = tileY * TILE_SIZE + TILE_SIZE / 2;
-        
-        const distanceX = tileCenterX - playerCenterX;
-        const distanceY = tileCenterY - playerCenterY;
-        const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
-        
-        // Check if tile is within digging range
-        if (distance <= gameState.player.digRange) {
-            // Get chunk coordinates
-            const chunkX = Math.floor(tileX / CHUNK_SIZE);
-            const chunkY = Math.floor(tileY / CHUNK_SIZE);
+        // Check if mouse is within digging range
+        if (distanceToMouse <= gameState.player.digRange) {
+            // Calculate tile coordinates
+            const tileX = Math.floor(mouseWorldX / TILE_SIZE);
+            const tileY = Math.floor(mouseWorldY / TILE_SIZE);
             
-            // Get local coordinates within chunk
-            const localX = ((tileX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-            const localY = ((tileY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+            // Create a unique key for this block position
+            const blockKey = `${tileX},${tileY}`;
             
-            // Get chunk
-            const chunk = getChunk(chunkX, chunkY);
+            // Check if we've recently dug this block
+            const now = Date.now();
+            const lastDug = recentlyDugBlocks.get(blockKey);
             
-            // Check if tile can be dug
-            if (chunk && isDiggable(chunk[localY][localX])) {
-                // Check if tile is collectible
-                if (isCollectible(chunk[localY][localX])) {
+            // Only process if it's been at least 500ms since the last dig for this block
+            // or if this is the first dig for this block
+            if (!lastDug || (now - lastDug > 500)) {
+                // Get current tile
+                const currentTile = getTile(tileX, tileY);
+                
+                // Check if tile is diggable
+                if (currentTile !== TILE_TYPES.AIR && currentTile !== TILE_TYPES.BEDROCK) {
+                    // Record this dig time
+                    recentlyDugBlocks.set(blockKey, now);
+                    
+                    // Set tile to air
+                    setTile(tileX, tileY, TILE_TYPES.AIR);
+                    
+                    // Send block dig to server (for multiplayer)
+                    _sendBlockDig(tileX * TILE_SIZE, tileY * TILE_SIZE, TILE_TYPES.AIR);
+                    
+                    // Create digging particles - use our improved particle system directly
+                    const particleX = tileX * TILE_SIZE + TILE_SIZE / 2;
+                    const particleY = tileY * TILE_SIZE + TILE_SIZE / 2;
+                    const particleColor = getTileColor(currentTile);
+                    
+                    // Create many small particles
+                    createParticles(particleX, particleY, particleColor, 30);
+                    
+                    // Add a few larger particles for better effect
+                    for (let i = 0; i < 5; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = 2 + Math.random() * 3;
+                        
+                        gameState.particles.push({
+                            x: particleX,
+                            y: particleY,
+                            velocityX: Math.cos(angle) * speed,
+                            velocityY: Math.sin(angle) * speed - 3, // Stronger upward boost
+                            color: particleColor,
+                            size: 4 + Math.random() * 4, // Larger particles
+                            expireTime: Date.now() + 400 + Math.random() * 300,
+                            gravity: 0.25 + Math.random() * 0.1,
+                            createdAt: Date.now()
+                        });
+                    }
+                    
                     // Add to inventory
-                    const tileType = chunk[localY][localX];
-                    gameState.inventory[tileType] = (gameState.inventory[tileType] || 0) + 1;
+                    addToInventory(currentTile);
                     
-                    // Add to score
-                    gameState.score += getScoreValue(tileType);
-                    
-                    // Play sound
-                    if (gameState.sounds && gameState.sounds.collect) {
-                        gameState.sounds.collect.currentTime = 0;
-                        gameState.sounds.collect.play().catch(e => console.error("Error playing sound:", e));
-                    }
-                    
-                    // Create particles
-                    createParticles(
-                        tileX * TILE_SIZE + TILE_SIZE / 2,
-                        tileY * TILE_SIZE + TILE_SIZE / 2,
-                        getTileColor(chunk[localY][localX]),
-                        10
-                    );
-                } else {
-                    // Play sound
-                    if (gameState.sounds && gameState.sounds.dig) {
-                        gameState.sounds.dig.currentTime = 0;
-                        gameState.sounds.dig.play().catch(e => console.error("Error playing sound:", e));
-                    }
-                    
-                    // Create particles
-                    createParticles(
-                        tileX * TILE_SIZE + TILE_SIZE / 2,
-                        tileY * TILE_SIZE + TILE_SIZE / 2,
-                        getTileColor(chunk[localY][localX]),
-                        5
-                    );
+                    // Play digging sound
+                    // playSound('dig');
                 }
-                
-                // Remove tile
-                chunk[localY][localX] = TILE_TYPES.AIR;
-                
-                // Mark game as having unsaved changes
-                gameState.hasUnsavedChanges = true;
             }
         }
     }
@@ -365,18 +416,23 @@ function createParticles(x, y, color, count) {
         gameState.particles = [];
     }
     
+    // Create more particles for a better effect
+    count = count || 20;
+    
     for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 1 + Math.random() * 2;
+        const speed = 3 + Math.random() * 5; // Faster particles
         
         gameState.particles.push({
             x: x,
             y: y,
             velocityX: Math.cos(angle) * speed,
-            velocityY: Math.sin(angle) * speed,
+            velocityY: Math.sin(angle) * speed - 2, // Initial upward boost
             color: color,
             size: 2 + Math.random() * 3,
-            expireTime: Date.now() + 500 + Math.random() * 1000
+            expireTime: Date.now() + 300 + Math.random() * 500, // Shorter lifetime for faster animation
+            gravity: 0.2 + Math.random() * 0.1, // Variable gravity for more natural movement
+            createdAt: Date.now()
         });
     }
 }
@@ -423,10 +479,10 @@ function drawAnt() {
     const centerX = screenX + gameState.player.width * gameState.zoom / 2;
     const centerY = screenY + gameState.player.height * gameState.zoom / 2;
     
-    // Draw ant with three body segments
-    gameState.ctx.fillStyle = "#8B0000"; // Dark red for ant body
+    // Draw ant with three body segments - using a cuter color scheme
+    gameState.ctx.fillStyle = "#FF6B6B"; // Cute pinkish-red for ant body
     
-    // 1. Draw abdomen (rear segment) - larger oval
+    // 1. Draw abdomen (rear segment) - rounder oval
     const abdomenWidth = antWidth * 0.5;
     const abdomenHeight = antHeight * 0.6;
     const abdomenX = centerX + (gameState.player.direction === 1 ? -abdomenWidth * 0.6 : abdomenWidth * 0.6);
@@ -441,11 +497,24 @@ function drawAnt() {
     );
     gameState.ctx.fill();
     
-    // 2. Draw thorax (middle segment) - smaller oval
+    // Add a cute pattern to abdomen
+    gameState.ctx.fillStyle = "#FF8C8C";
+    gameState.ctx.beginPath();
+    gameState.ctx.ellipse(
+        abdomenX,
+        centerY,
+        abdomenWidth / 3,
+        abdomenHeight / 3,
+        0, 0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // 2. Draw thorax (middle segment) - rounder oval
     const thoraxWidth = antWidth * 0.3;
     const thoraxHeight = antHeight * 0.4;
     const thoraxX = centerX + (gameState.player.direction === 1 ? thoraxWidth * 0.3 : -thoraxWidth * 0.3);
     
+    gameState.ctx.fillStyle = "#FF6B6B";
     gameState.ctx.beginPath();
     gameState.ctx.ellipse(
         thoraxX,
@@ -456,11 +525,11 @@ function drawAnt() {
     );
     gameState.ctx.fill();
     
-    // 3. Draw head - circle
+    // 3. Draw head - rounder circle
     const headSize = antWidth * 0.25;
     const headX = centerX + (gameState.player.direction === 1 ? 
-                            thoraxX + thoraxWidth * 0.6 : 
-                            thoraxX - thoraxWidth * 0.6);
+                            thoraxWidth * 0.8 : 
+                            -thoraxWidth * 0.8);
     const headY = centerY;
     
     gameState.ctx.beginPath();
@@ -472,72 +541,83 @@ function drawAnt() {
     );
     gameState.ctx.fill();
     
-    // Draw eyes
+    // Draw cute eyes (larger and more expressive)
     gameState.ctx.fillStyle = "#FFFFFF";
-    const eyeX = headX + (gameState.player.direction === 1 ? headSize * 0.2 : -headSize * 0.2);
-    const eyeY = headY - headSize * 0.1;
-    const eyeSize = Math.max(2, antWidth * 0.08);
+    const eyeSize = Math.max(2, antWidth * 0.1);
+    
+    // Left eye
+    const eyeX1 = headX + (gameState.player.direction === 1 ? headSize * 0.15 : -headSize * 0.15);
+    const eyeY1 = headY - headSize * 0.1;
     
     gameState.ctx.beginPath();
     gameState.ctx.arc(
-        eyeX,
-        eyeY,
+        eyeX1,
+        eyeY1,
         eyeSize / 2,
         0, Math.PI * 2
     );
     gameState.ctx.fill();
     
-    // Draw mandibles
-    gameState.ctx.strokeStyle = "#8B0000";
-    gameState.ctx.lineWidth = Math.max(1, antWidth * 0.04);
+    // Right eye
+    const eyeX2 = headX + (gameState.player.direction === 1 ? headSize * 0.3 : -headSize * 0.3);
+    const eyeY2 = eyeY1;
     
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        eyeX2,
+        eyeY2,
+        eyeSize / 2,
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Draw pupils (black dots in eyes)
+    gameState.ctx.fillStyle = "#000000";
+    
+    // Left pupil
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        eyeX1 + (gameState.player.direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
+        eyeY1,
+        eyeSize / 5,
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Right pupil
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        eyeX2 + (gameState.player.direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
+        eyeY2,
+        eyeSize / 5,
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Draw cute smile
+    gameState.ctx.strokeStyle = "#000000";
+    gameState.ctx.lineWidth = Math.max(1, antWidth * 0.02);
+    
+    gameState.ctx.beginPath();
     if (gameState.player.direction === 1) { // Facing right
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX + headSize / 2,
-            headY + headSize * 0.2
+        gameState.ctx.arc(
+            headX + headSize * 0.2,
+            headY + headSize * 0.1,
+            headSize * 0.2,
+            0, Math.PI
         );
-        gameState.ctx.lineTo(
-            headX + headSize,
-            headY + headSize * 0.1
-        );
-        gameState.ctx.stroke();
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX + headSize / 2,
-            headY - headSize * 0.1
-        );
-        gameState.ctx.lineTo(
-            headX + headSize,
-            headY - headSize * 0.2
-        );
-        gameState.ctx.stroke();
     } else { // Facing left
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX - headSize / 2,
-            headY + headSize * 0.2
+        gameState.ctx.arc(
+            headX - headSize * 0.2,
+            headY + headSize * 0.1,
+            headSize * 0.2,
+            0, Math.PI
         );
-        gameState.ctx.lineTo(
-            headX - headSize,
-            headY + headSize * 0.1
-        );
-        gameState.ctx.stroke();
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX - headSize / 2,
-            headY - headSize * 0.1
-        );
-        gameState.ctx.lineTo(
-            headX - headSize,
-            headY - headSize * 0.2
-        );
-        gameState.ctx.stroke();
     }
+    gameState.ctx.stroke();
     
-    // Draw antennae
+    // Draw antennae (cuter, more curved)
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
     
     // First antenna
@@ -550,7 +630,7 @@ function drawAnt() {
     gameState.ctx.moveTo(antennaBaseX, antennaBaseY);
     gameState.ctx.bezierCurveTo(
         antennaBaseX + (gameState.player.direction === 1 ? headSize * 0.4 : -headSize * 0.4),
-        antennaBaseY - headSize * 0.3,
+        antennaBaseY - headSize * 0.5,
         antennaEndX - (gameState.player.direction === 1 ? headSize * 0.2 : -headSize * 0.2),
         antennaEndY - headSize * 0.2,
         antennaEndX,
@@ -558,17 +638,29 @@ function drawAnt() {
     );
     gameState.ctx.stroke();
     
+    // Add cute antenna tips (small circles)
+    gameState.ctx.fillStyle = "#FF8C8C";
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        antennaEndX,
+        antennaEndY,
+        Math.max(1, antWidth * 0.04),
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
     // Second antenna
     const antenna2BaseX = headX + (gameState.player.direction === 1 ? headSize * 0.4 : -headSize * 0.4);
     const antenna2BaseY = antennaBaseY;
     const antenna2EndX = antenna2BaseX + (gameState.player.direction === 1 ? headSize * 0.8 : -headSize * 0.8);
     const antenna2EndY = antennaEndY - headSize * 0.2;
     
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.beginPath();
     gameState.ctx.moveTo(antenna2BaseX, antenna2BaseY);
     gameState.ctx.bezierCurveTo(
         antenna2BaseX + (gameState.player.direction === 1 ? headSize * 0.4 : -headSize * 0.4),
-        antenna2BaseY - headSize * 0.3,
+        antenna2BaseY - headSize * 0.5,
         antenna2EndX - (gameState.player.direction === 1 ? headSize * 0.2 : -headSize * 0.2),
         antenna2EndY - headSize * 0.2,
         antenna2EndX,
@@ -576,7 +668,19 @@ function drawAnt() {
     );
     gameState.ctx.stroke();
     
-    // Draw legs
+    // Add cute antenna tips (small circles)
+    gameState.ctx.fillStyle = "#FF8C8C";
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        antenna2EndX,
+        antenna2EndY,
+        Math.max(1, antWidth * 0.04),
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Draw legs (cuter, more rounded)
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.lineWidth = Math.max(1, antWidth * 0.04);
     
     // Draw 3 legs on each side of the thorax
@@ -591,7 +695,7 @@ function drawAnt() {
             centerY + legOffsetY
         );
         
-        // Middle joint of leg
+        // Middle joint of leg with curve
         const leftMidX = thoraxX - thoraxWidth / 2 - legLength * 0.4;
         const leftMidY = centerY + legOffsetY - legLength * 0.2;
         
@@ -599,8 +703,25 @@ function drawAnt() {
         const leftEndX = leftMidX - legLength * 0.4;
         const leftEndY = leftMidY + legLength * 0.4;
         
-        gameState.ctx.lineTo(leftMidX, leftMidY);
-        gameState.ctx.lineTo(leftEndX, leftEndY);
+        // Draw curved leg
+        gameState.ctx.bezierCurveTo(
+            thoraxX - thoraxWidth / 2 - legLength * 0.2,
+            centerY + legOffsetY - legLength * 0.1,
+            leftMidX + legLength * 0.1,
+            leftMidY - legLength * 0.1,
+            leftMidX,
+            leftMidY
+        );
+        
+        gameState.ctx.bezierCurveTo(
+            leftMidX - legLength * 0.1,
+            leftMidY + legLength * 0.1,
+            leftEndX + legLength * 0.1,
+            leftEndY - legLength * 0.1,
+            leftEndX,
+            leftEndY
+        );
+        
         gameState.ctx.stroke();
         
         // Right leg
@@ -618,12 +739,30 @@ function drawAnt() {
         const rightEndX = rightMidX + legLength * 0.4;
         const rightEndY = rightMidY + legLength * 0.4;
         
-        gameState.ctx.lineTo(rightMidX, rightMidY);
-        gameState.ctx.lineTo(rightEndX, rightEndY);
+        // Draw curved leg
+        gameState.ctx.bezierCurveTo(
+            thoraxX + thoraxWidth / 2 + legLength * 0.2,
+            centerY + legOffsetY - legLength * 0.1,
+            rightMidX - legLength * 0.1,
+            rightMidY - legLength * 0.1,
+            rightMidX,
+            rightMidY
+        );
+        
+        gameState.ctx.bezierCurveTo(
+            rightMidX + legLength * 0.1,
+            rightMidY + legLength * 0.1,
+            rightEndX - legLength * 0.1,
+            rightEndY - legLength * 0.1,
+            rightEndX,
+            rightEndY
+        );
+        
         gameState.ctx.stroke();
     }
     
     // Draw a thin "waist" connecting thorax and abdomen
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
     gameState.ctx.beginPath();
     gameState.ctx.moveTo(
@@ -746,45 +885,26 @@ function getBiomeAt(x) {
     return gameState.biomeMap[x] ? gameState.biomeMap[x].biomeType : BIOME_TYPES.PLAINS;
 }
 
-// Render game
-function renderGame() {
-    // Clear the canvas
+// Render game (game.js version)
+function renderGameInternal() {
+    // Clear canvas
     gameState.ctx.clearRect(0, 0, gameState.canvas.width, gameState.canvas.height);
     
-    // Check if we should use the main.js rendering functions
-    if (typeof window.mainRenderGame === 'function' && false) { // Disabled for now
-        // Use the main.js rendering function
-        window.mainRenderGame();
-        return;
+    // Draw world
+    drawWorld();
+    
+    // Draw other players (for multiplayer)
+    if (socket && socket.connected) {
+        drawOtherPlayers();
     }
     
-    // Use the drawWorld function from rendering.js if available
-    if (typeof drawWorld === 'function') {
-        drawWorld();
-    } else {
-        // Fallback rendering if drawWorld is not available
-        // Save context state before transformations
-        gameState.ctx.save();
-        
-        // Apply zoom transformation
-        gameState.ctx.scale(gameState.zoom, gameState.zoom);
-        
-        // Apply camera transformation
-        gameState.ctx.translate(-gameState.camera.x, -gameState.camera.y);
-        
-        // Draw the player directly
-        drawAntDirect();
-        
-        // Draw particles directly only if we're not actively zooming
-        if (!gameState.isZooming) {
-            drawParticlesDirect();
-        }
-        
-        // Restore context to original state
-        gameState.ctx.restore();
-    }
+    // Draw player
+    drawPlayer();
     
-    // Draw UI (no zoom or camera transformation needed for UI)
+    // Draw particles
+    drawParticles();
+    
+    // Draw UI
     drawUI();
 }
 
@@ -802,10 +922,10 @@ function drawAntDirect() {
     const centerX = playerX + gameState.player.width / 2;
     const centerY = playerY + gameState.player.height / 2;
     
-    // Draw ant with three body segments
-    gameState.ctx.fillStyle = "#8B0000"; // Dark red for ant body
+    // Draw ant with three body segments - using a cuter color scheme
+    gameState.ctx.fillStyle = "#FF6B6B"; // Cute pinkish-red for ant body
     
-    // 1. Draw abdomen (rear segment) - larger oval
+    // 1. Draw abdomen (rear segment) - rounder oval
     const abdomenWidth = antWidth * 0.5;
     const abdomenHeight = antHeight * 0.6;
     const abdomenX = centerX + (gameState.player.direction === 1 ? -abdomenWidth * 0.6 : abdomenWidth * 0.6);
@@ -820,11 +940,24 @@ function drawAntDirect() {
     );
     gameState.ctx.fill();
     
-    // 2. Draw thorax (middle segment) - smaller oval
+    // Add a cute pattern to abdomen
+    gameState.ctx.fillStyle = "#FF8C8C";
+    gameState.ctx.beginPath();
+    gameState.ctx.ellipse(
+        abdomenX,
+        centerY,
+        abdomenWidth / 3,
+        abdomenHeight / 3,
+        0, 0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // 2. Draw thorax (middle segment) - rounder oval
     const thoraxWidth = antWidth * 0.3;
     const thoraxHeight = antHeight * 0.4;
     const thoraxX = centerX + (gameState.player.direction === 1 ? thoraxWidth * 0.3 : -thoraxWidth * 0.3);
     
+    gameState.ctx.fillStyle = "#FF6B6B";
     gameState.ctx.beginPath();
     gameState.ctx.ellipse(
         thoraxX,
@@ -835,11 +968,11 @@ function drawAntDirect() {
     );
     gameState.ctx.fill();
     
-    // 3. Draw head - circle
+    // 3. Draw head - rounder circle
     const headSize = antWidth * 0.25;
     const headX = centerX + (gameState.player.direction === 1 ? 
-                            thoraxX + thoraxWidth * 0.6 : 
-                            thoraxX - thoraxWidth * 0.6);
+                            thoraxWidth * 0.8 : 
+                            -thoraxWidth * 0.8);
     const headY = centerY;
     
     gameState.ctx.beginPath();
@@ -851,72 +984,83 @@ function drawAntDirect() {
     );
     gameState.ctx.fill();
     
-    // Draw eyes
+    // Draw cute eyes (larger and more expressive)
     gameState.ctx.fillStyle = "#FFFFFF";
-    const eyeX = headX + (gameState.player.direction === 1 ? headSize * 0.2 : -headSize * 0.2);
-    const eyeY = headY - headSize * 0.1;
-    const eyeSize = Math.max(2, antWidth * 0.08);
+    const eyeSize = Math.max(2, antWidth * 0.1);
+    
+    // Left eye
+    const eyeX1 = headX + (gameState.player.direction === 1 ? headSize * 0.15 : -headSize * 0.15);
+    const eyeY1 = headY - headSize * 0.1;
     
     gameState.ctx.beginPath();
     gameState.ctx.arc(
-        eyeX,
-        eyeY,
+        eyeX1,
+        eyeY1,
         eyeSize / 2,
         0, Math.PI * 2
     );
     gameState.ctx.fill();
     
-    // Draw mandibles
-    gameState.ctx.strokeStyle = "#8B0000";
-    gameState.ctx.lineWidth = Math.max(1, antWidth * 0.04);
+    // Right eye
+    const eyeX2 = headX + (gameState.player.direction === 1 ? headSize * 0.3 : -headSize * 0.3);
+    const eyeY2 = eyeY1;
     
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        eyeX2,
+        eyeY2,
+        eyeSize / 2,
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Draw pupils (black dots in eyes)
+    gameState.ctx.fillStyle = "#000000";
+    
+    // Left pupil
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        eyeX1 + (gameState.player.direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
+        eyeY1,
+        eyeSize / 5,
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Right pupil
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        eyeX2 + (gameState.player.direction === 1 ? eyeSize * 0.2 : -eyeSize * 0.2),
+        eyeY2,
+        eyeSize / 5,
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Draw cute smile
+    gameState.ctx.strokeStyle = "#000000";
+    gameState.ctx.lineWidth = Math.max(1, antWidth * 0.02);
+    
+    gameState.ctx.beginPath();
     if (gameState.player.direction === 1) { // Facing right
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX + headSize / 2,
-            headY + headSize * 0.2
+        gameState.ctx.arc(
+            headX + headSize * 0.2,
+            headY + headSize * 0.1,
+            headSize * 0.2,
+            0, Math.PI
         );
-        gameState.ctx.lineTo(
-            headX + headSize,
-            headY + headSize * 0.1
-        );
-        gameState.ctx.stroke();
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX + headSize / 2,
-            headY - headSize * 0.1
-        );
-        gameState.ctx.lineTo(
-            headX + headSize,
-            headY - headSize * 0.2
-        );
-        gameState.ctx.stroke();
     } else { // Facing left
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX - headSize / 2,
-            headY + headSize * 0.2
+        gameState.ctx.arc(
+            headX - headSize * 0.2,
+            headY + headSize * 0.1,
+            headSize * 0.2,
+            0, Math.PI
         );
-        gameState.ctx.lineTo(
-            headX - headSize,
-            headY + headSize * 0.1
-        );
-        gameState.ctx.stroke();
-        
-        gameState.ctx.beginPath();
-        gameState.ctx.moveTo(
-            headX - headSize / 2,
-            headY - headSize * 0.1
-        );
-        gameState.ctx.lineTo(
-            headX - headSize,
-            headY - headSize * 0.2
-        );
-        gameState.ctx.stroke();
     }
+    gameState.ctx.stroke();
     
-    // Draw antennae
+    // Draw antennae (cuter, more curved)
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
     
     // First antenna
@@ -929,7 +1073,7 @@ function drawAntDirect() {
     gameState.ctx.moveTo(antennaBaseX, antennaBaseY);
     gameState.ctx.bezierCurveTo(
         antennaBaseX + (gameState.player.direction === 1 ? headSize * 0.4 : -headSize * 0.4),
-        antennaBaseY - headSize * 0.3,
+        antennaBaseY - headSize * 0.5,
         antennaEndX - (gameState.player.direction === 1 ? headSize * 0.2 : -headSize * 0.2),
         antennaEndY - headSize * 0.2,
         antennaEndX,
@@ -937,17 +1081,29 @@ function drawAntDirect() {
     );
     gameState.ctx.stroke();
     
+    // Add cute antenna tips (small circles)
+    gameState.ctx.fillStyle = "#FF8C8C";
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        antennaEndX,
+        antennaEndY,
+        Math.max(1, antWidth * 0.04),
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
     // Second antenna
     const antenna2BaseX = headX + (gameState.player.direction === 1 ? headSize * 0.4 : -headSize * 0.4);
     const antenna2BaseY = antennaBaseY;
     const antenna2EndX = antenna2BaseX + (gameState.player.direction === 1 ? headSize * 0.8 : -headSize * 0.8);
     const antenna2EndY = antennaEndY - headSize * 0.2;
     
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.beginPath();
     gameState.ctx.moveTo(antenna2BaseX, antenna2BaseY);
     gameState.ctx.bezierCurveTo(
         antenna2BaseX + (gameState.player.direction === 1 ? headSize * 0.4 : -headSize * 0.4),
-        antenna2BaseY - headSize * 0.3,
+        antenna2BaseY - headSize * 0.5,
         antenna2EndX - (gameState.player.direction === 1 ? headSize * 0.2 : -headSize * 0.2),
         antenna2EndY - headSize * 0.2,
         antenna2EndX,
@@ -955,7 +1111,19 @@ function drawAntDirect() {
     );
     gameState.ctx.stroke();
     
-    // Draw legs
+    // Add cute antenna tips (small circles)
+    gameState.ctx.fillStyle = "#FF8C8C";
+    gameState.ctx.beginPath();
+    gameState.ctx.arc(
+        antenna2EndX,
+        antenna2EndY,
+        Math.max(1, antWidth * 0.04),
+        0, Math.PI * 2
+    );
+    gameState.ctx.fill();
+    
+    // Draw legs (cuter, more rounded)
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.lineWidth = Math.max(1, antWidth * 0.04);
     
     // Draw 3 legs on each side of the thorax
@@ -970,7 +1138,7 @@ function drawAntDirect() {
             centerY + legOffsetY
         );
         
-        // Middle joint of leg
+        // Middle joint of leg with curve
         const leftMidX = thoraxX - thoraxWidth / 2 - legLength * 0.4;
         const leftMidY = centerY + legOffsetY - legLength * 0.2;
         
@@ -978,8 +1146,25 @@ function drawAntDirect() {
         const leftEndX = leftMidX - legLength * 0.4;
         const leftEndY = leftMidY + legLength * 0.4;
         
-        gameState.ctx.lineTo(leftMidX, leftMidY);
-        gameState.ctx.lineTo(leftEndX, leftEndY);
+        // Draw curved leg
+        gameState.ctx.bezierCurveTo(
+            thoraxX - thoraxWidth / 2 - legLength * 0.2,
+            centerY + legOffsetY - legLength * 0.1,
+            leftMidX + legLength * 0.1,
+            leftMidY - legLength * 0.1,
+            leftMidX,
+            leftMidY
+        );
+        
+        gameState.ctx.bezierCurveTo(
+            leftMidX - legLength * 0.1,
+            leftMidY + legLength * 0.1,
+            leftEndX + legLength * 0.1,
+            leftEndY - legLength * 0.1,
+            leftEndX,
+            leftEndY
+        );
+        
         gameState.ctx.stroke();
         
         // Right leg
@@ -997,12 +1182,30 @@ function drawAntDirect() {
         const rightEndX = rightMidX + legLength * 0.4;
         const rightEndY = rightMidY + legLength * 0.4;
         
-        gameState.ctx.lineTo(rightMidX, rightMidY);
-        gameState.ctx.lineTo(rightEndX, rightEndY);
+        // Draw curved leg
+        gameState.ctx.bezierCurveTo(
+            thoraxX + thoraxWidth / 2 + legLength * 0.2,
+            centerY + legOffsetY - legLength * 0.1,
+            rightMidX - legLength * 0.1,
+            rightMidY - legLength * 0.1,
+            rightMidX,
+            rightMidY
+        );
+        
+        gameState.ctx.bezierCurveTo(
+            rightMidX + legLength * 0.1,
+            rightMidY + legLength * 0.1,
+            rightEndX - legLength * 0.1,
+            rightEndY - legLength * 0.1,
+            rightEndX,
+            rightEndY
+        );
+        
         gameState.ctx.stroke();
     }
     
     // Draw a thin "waist" connecting thorax and abdomen
+    gameState.ctx.strokeStyle = "#FF6B6B";
     gameState.ctx.lineWidth = Math.max(1, antWidth * 0.03);
     gameState.ctx.beginPath();
     gameState.ctx.moveTo(
@@ -1036,6 +1239,7 @@ function updateParticles(deltaTime) {
     if (!gameState.particles || gameState.isZooming) return;
     
     const currentTime = Date.now();
+    const dt = deltaTime / 16.67; // Normalize to 60fps for consistent physics
     
     // Update each particle
     for (let i = gameState.particles.length - 1; i >= 0; i--) {
@@ -1047,12 +1251,27 @@ function updateParticles(deltaTime) {
             continue;
         }
         
-        // Update position
-        particle.x += particle.velocityX;
-        particle.y += particle.velocityY;
+        // Update position with delta time for smooth movement
+        particle.x += particle.velocityX * dt;
+        particle.y += particle.velocityY * dt;
         
-        // Apply gravity
-        particle.velocityY += 0.1;
+        // Apply gravity (use particle's own gravity value if available)
+        const gravity = particle.gravity || 0.1;
+        particle.velocityY += gravity * dt;
+        
+        // Add drag to slow particles over time
+        particle.velocityX *= 0.98;
+        particle.velocityY *= 0.98;
+    }
+    
+    // Safety check: if particles have been around for more than 10 seconds, remove them
+    // This prevents any potential infinite loops
+    if (gameState.particles.length > 0) {
+        const oldestAllowedTime = currentTime - 10000; // 10 seconds ago
+        gameState.particles = gameState.particles.filter(p => 
+            (p.createdAt && p.createdAt > oldestAllowedTime) || 
+            (p.expireTime > oldestAllowedTime)
+        );
     }
 }
 
@@ -1060,13 +1279,138 @@ function updateParticles(deltaTime) {
 function drawParticles() {
     if (!gameState.particles || gameState.isZooming) return;
     
+    const currentTime = Date.now();
+    
     for (const particle of gameState.particles) {
+        // Calculate opacity based on remaining lifetime
+        const lifePercent = 1 - ((particle.expireTime - currentTime) / 
+                               (particle.expireTime - (particle.createdAt || (particle.expireTime - 500))));
+        const opacity = 1 - lifePercent; // Fade out as particles age
+        
+        // Set fill style with opacity
+        gameState.ctx.globalAlpha = Math.max(0.1, opacity);
         gameState.ctx.fillStyle = particle.color;
-        gameState.ctx.fillRect(
-            Math.round((particle.x - gameState.camera.x) * gameState.zoom),
-            Math.round((particle.y - gameState.camera.y) * gameState.zoom),
-            particle.size * gameState.zoom,
-            particle.size * gameState.zoom
-        );
+        
+        // Draw rounded particles instead of squares
+        const x = Math.round((particle.x - gameState.camera.x) * gameState.zoom);
+        const y = Math.round((particle.y - gameState.camera.y) * gameState.zoom);
+        const size = particle.size * gameState.zoom;
+        
+        // Use circles for larger particles, squares for tiny ones (performance)
+        if (size > 3) {
+            gameState.ctx.beginPath();
+            gameState.ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
+            gameState.ctx.fill();
+        } else {
+            gameState.ctx.fillRect(x, y, size, size);
+        }
     }
-} 
+    
+    // Reset global alpha
+    gameState.ctx.globalAlpha = 1;
+}
+
+// Check and request chunks if needed
+function checkAndRequestChunks() {
+    // Only in multiplayer mode
+    if (!socket || !socket.connected) return;
+    
+    // Calculate player chunk
+    const playerChunkX = Math.floor(gameState.player.x / (CHUNK_SIZE * TILE_SIZE));
+    const playerChunkY = Math.floor(gameState.player.y / (CHUNK_SIZE * TILE_SIZE));
+    
+    // Check chunks in visible radius
+    for (let y = playerChunkY - VISIBLE_CHUNKS_RADIUS; y <= playerChunkY + VISIBLE_CHUNKS_RADIUS; y++) {
+        for (let x = playerChunkX - VISIBLE_CHUNKS_RADIUS; x <= playerChunkX + VISIBLE_CHUNKS_RADIUS; x++) {
+            const chunkKey = `${x},${y}`;
+            
+            // Request chunk if not loaded
+            if (!gameState.loadedChunks.has(chunkKey)) {
+                _requestChunk(x, y);
+            }
+        }
+    }
+}
+
+// Get a tile at specific world coordinates
+function getTile(x, y) {
+    if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
+        return TILE_TYPES.BEDROCK; // Out of bounds is bedrock
+    }
+    
+    const chunkX = Math.floor(x / CHUNK_SIZE);
+    const chunkY = Math.floor(y / CHUNK_SIZE);
+    const chunkKey = `${chunkX},${chunkY}`;
+    
+    // Check if chunk is loaded
+    if (!gameState.chunks[chunkKey]) {
+        // In multiplayer mode, request chunk from server
+        if (gameState.isMultiplayer) {
+            _requestChunk(chunkX, chunkY);
+            return TILE_TYPES.AIR; // Return air while waiting for chunk
+        } else {
+            // Return air if chunk not loaded in single player mode
+            // We don't generate chunks here to avoid circular dependencies
+            return TILE_TYPES.AIR;
+        }
+    }
+    
+    const localX = x % CHUNK_SIZE;
+    const localY = y % CHUNK_SIZE;
+    
+    // Make sure the chunk and its data exist
+    if (gameState.chunks[chunkKey] && 
+        gameState.chunks[chunkKey][localY] && 
+        gameState.chunks[chunkKey][localY][localX] !== undefined) {
+        return gameState.chunks[chunkKey][localY][localX];
+    }
+    
+    return TILE_TYPES.AIR; // Default to air if chunk data is incomplete
+}
+
+// Set a tile at specific world coordinates
+function setTile(x, y, tileType, sendToServer = true) {
+    if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
+        return; // Out of bounds
+    }
+    
+    const chunkX = Math.floor(x / CHUNK_SIZE);
+    const chunkY = Math.floor(y / CHUNK_SIZE);
+    const chunkKey = `${chunkX},${chunkY}`;
+    
+    // Check if chunk is loaded
+    if (!gameState.chunks[chunkKey]) {
+        // We can't set tiles in unloaded chunks
+        return;
+    }
+    
+    const localX = x % CHUNK_SIZE;
+    const localY = y % CHUNK_SIZE;
+    
+    // Make sure the chunk and its data exist
+    if (gameState.chunks[chunkKey] && 
+        gameState.chunks[chunkKey][localY]) {
+        // Update tile
+        gameState.chunks[chunkKey][localY][localX] = tileType;
+        
+        // In multiplayer mode, send block update to server
+        if (gameState.isMultiplayer && sendToServer) {
+            _sendBlockDig(x * TILE_SIZE, y * TILE_SIZE, tileType);
+        }
+    }
+}
+
+// Expose game functions to window object for use in other modules
+window.handlePlayerMovement = handlePlayerMovement;
+window.handleDigging = handleDigging;
+window.updateCamera = updateCamera;
+window.drawWorld = drawWorld;
+window.drawPlayer = drawPlayer;
+window.drawUI = drawUI;
+window.updateParticles = updateParticles;
+window.drawParticles = drawParticles;
+window.getTile = getTile;
+window.setTile = setTile;
+window.checkAndRequestChunks = checkAndRequestChunks;
+window.renderGameInternal = renderGameInternal;
+window.createParticles = createParticles; 

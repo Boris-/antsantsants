@@ -3,23 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Game</title>
+    <title>Ant Game - Multiplayer</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
     <div id="tutorial">
-        WASD to move, click to dig. Explore different biomes (Plains, Forest, Desert, Mountains) and collect resources (coal, iron, gold, diamonds). Dig deeper to find rarer ores!
+        WASD to move, click to dig. Explore different biomes (Plains, Forest, Desert, Mountains) and collect resources (coal, iron, gold, diamonds). Dig deeper to find rarer ores! Play with friends in multiplayer mode!
     </div>
     
     <!-- Libraries -->
     <script src="js/libs/simplex-noise.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     
     <!-- Game files -->
     <script src="js/constants.js"></script>
     <script src="js/initialization.js"></script>
     <script src="js/worldGeneration.js"></script>
     <script src="js/rendering.js"></script>
+    <script src="js/multiplayer.js"></script>
     <script src="js/game.js"></script>
     <script src="js/main.js"></script>
 </body>

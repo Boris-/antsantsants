@@ -1,66 +1,86 @@
-# Ant Game
+# Multiplayer Ant Game
 
-A 2D procedurally generated sandbox game with biomes, mining, and exploration.
+A 2D procedurally generated sandbox game with biomes, mining, and exploration. Now with multiplayer support!
 
 ## Features
 
-- **Procedural World Generation**: Explore a vast 2000x2000 world with different biomes
-- **Biome System**: Discover unique Plains, Forest, Desert, and Mountain biomes
-- **Mining and Resource Collection**: Dig through the terrain to find valuable resources
-- **Depth-based Ore Distribution**: Find rarer ores as you dig deeper
-- **Cave Systems**: Explore procedurally generated caves
-- **Day/Night Cycle**: Experience changing lighting conditions
-- **Inventory System**: Collect and manage resources
-- **Particle Effects**: Visual feedback for digging and collecting
-
-## Biomes
-
-- **Plains**: Flat grasslands with occasional trees and flowers
-- **Forest**: Dense trees of different types (oak, birch, pine) with bushes and mushrooms
-- **Desert**: Sandy terrain with cacti and minimal vegetation
-- **Mountains**: Elevated rocky terrain with snow at higher altitudes
-
-## Resources
-
-- **Basic**: Dirt, Stone, Sand, Wood, Leaves
-- **Ores**: Coal, Iron, Gold, Diamond (rarer at deeper levels)
-- **Plants**: Flowers, Mushrooms, Tall Grass, Bushes
+- Explore different biomes (Plains, Forest, Desert, Mountains)
+- Collect resources (coal, iron, gold, diamonds)
+- Dig deeper to find rarer ores
+- Play with friends in multiplayer mode
+- Real-time world updates via WebSockets
 
 ## Controls
 
-- **Movement**: WASD or Arrow Keys
-- **Digging**: Left Mouse Click
-- **Save Game**: S key
-- **Load Game**: L key
-- **Toggle Debug**: D key
+- **WASD** - Move your ant
+- **Mouse Click** - Dig blocks
+- **Scroll Wheel** - Zoom in/out
 
 ## How to Run
 
-1. Clone this repository
-2. Open `index.html` in a modern web browser
-3. Start exploring and mining!
+### Prerequisites
+
+- Node.js (v14 or higher)
+- npm
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+   ```
+   npm install
+   ```
+
+### Running the Server
+
+1. Start the server:
+   ```
+   node server.js
+   ```
+   This will start the server on port 3000.
+
+### Running the Client
+
+1. Open `index.html` in your browser
+2. The game will automatically connect to the server running on localhost:3000
+
+### Playing with Friends
+
+To play with friends over the internet, you'll need to:
+
+1. Make sure your server is accessible from the internet (you may need to configure port forwarding on your router)
+2. Update the Socket.IO connection URL in `js/multiplayer.js` to point to your server's public IP or domain
 
 ## Technical Details
 
-- Built with vanilla JavaScript
-- Uses HTML5 Canvas for rendering
-- Implements Simplex Noise for terrain generation
-- Chunk-based world loading for performance
-- Local storage for game saving/loading
+### Server-Side
 
-## Future Enhancements
+- Express.js for serving static files
+- Socket.IO for real-time communication
+- Custom world generation algorithm
 
-- More biomes (Jungle, Tundra, Volcanic)
+### Client-Side
+
+- HTML5 Canvas for rendering
+- Socket.IO client for multiplayer communication
+- Procedural terrain generation
+
+## Multiplayer Features
+
+- Shared world for all players
+- See other players moving in real-time
+- Synchronized block digging
+- Server-side world generation for consistency
+
+## Future Improvements
+
+- Player authentication
+- Saving player progress
+- More biomes and resources
 - Crafting system
-- More enemy types
-- Building mechanics
-- Weather effects
-- Underground structures
-
-## Credits
-
-Created as a learning project for procedural generation and game development.
+- Enemy mobs
+- Day/night cycle
 
 ## License
 
-MIT License 
+MIT 

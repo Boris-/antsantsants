@@ -567,20 +567,24 @@ function drawPlayer() {
 
 // Draw enemies
 function drawEnemies() {
-    // Apply zoom transformation
-    gameState.ctx.save();
-    gameState.ctx.scale(gameState.zoom, gameState.zoom);
+    // Draw other players if the function exists
+    if (typeof drawOtherPlayers === 'function') {
+        drawOtherPlayers();
+    }
     
     for (const enemy of gameState.enemies) {
-        const enemyScreenX = enemy.x - gameState.camera.x / gameState.zoom;
-        const enemyScreenY = enemy.y - gameState.camera.y / gameState.zoom;
+        // Only draw if on screen (rough check)
+        const screenX = Math.round((enemy.x - gameState.camera.x) * gameState.zoom);
+        const screenY = Math.round((enemy.y - gameState.camera.y) * gameState.zoom);
+        const screenWidth = enemy.width * gameState.zoom;
+        const screenHeight = enemy.height * gameState.zoom;
         
-        // Only draw if on screen
+        // Check if enemy is visible in the current view
         if (
-            enemyScreenX > -enemy.width &&
-            enemyScreenX < gameState.canvas.width / gameState.zoom &&
-            enemyScreenY > -enemy.height &&
-            enemyScreenY < gameState.canvas.height / gameState.zoom
+            screenX + screenWidth > 0 &&
+            screenX < gameState.canvas.width &&
+            screenY + screenHeight > 0 &&
+            screenY < gameState.canvas.height
         ) {
             // Bug enemy
             gameState.ctx.fillStyle = '#FF0000';
@@ -588,41 +592,38 @@ function drawEnemies() {
             // Body
             gameState.ctx.beginPath();
             gameState.ctx.ellipse(
-                enemyScreenX + enemy.width / 2,
-                enemyScreenY + enemy.height / 2,
-                enemy.width / 2,
-                enemy.height / 3,
+                screenX + screenWidth / 2,
+                screenY + screenHeight / 2,
+                screenWidth / 2,
+                screenHeight / 2,
                 0, 0, Math.PI * 2
-            );
-            gameState.ctx.fill();
-            
-            // Head
-            const facingRight = enemy.velocityX > 0;
-            gameState.ctx.beginPath();
-            gameState.ctx.arc(
-                enemyScreenX + (facingRight ? enemy.width * 0.75 : enemy.width * 0.25),
-                enemyScreenY + enemy.height / 2,
-                enemy.width / 4,
-                0, Math.PI * 2
             );
             gameState.ctx.fill();
             
             // Eyes
             gameState.ctx.fillStyle = '#FFFFFF';
-            const eyeX = enemyScreenX + (facingRight ? enemy.width * 0.85 : enemy.width * 0.15);
+            
+            // Left eye
             gameState.ctx.beginPath();
             gameState.ctx.arc(
-                eyeX,
-                enemyScreenY + enemy.height * 0.4,
-                2,
+                screenX + screenWidth * 0.3,
+                screenY + screenHeight * 0.3,
+                screenWidth * 0.1,
+                0, Math.PI * 2
+            );
+            gameState.ctx.fill();
+            
+            // Right eye
+            gameState.ctx.beginPath();
+            gameState.ctx.arc(
+                screenX + screenWidth * 0.7,
+                screenY + screenHeight * 0.3,
+                screenWidth * 0.1,
                 0, Math.PI * 2
             );
             gameState.ctx.fill();
         }
     }
-    
-    // Restore context
-    gameState.ctx.restore();
 }
 
 // Draw minimap in the corner
@@ -733,6 +734,11 @@ function drawPlayerDirect() {
 
 // Draw enemies directly in world coordinates (used when ctx is already transformed)
 function drawEnemiesDirect() {
+    // Draw other players if the function exists
+    if (typeof drawOtherPlayersDirect === 'function') {
+        drawOtherPlayersDirect();
+    }
+    
     for (const enemy of gameState.enemies) {
         // Only draw if on screen (rough check)
         // Since context is already transformed, we don't need to apply zoom here

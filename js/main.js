@@ -5,6 +5,9 @@ window.addEventListener('load', () => {
     // Initialize the game state
     initializeGameState();
     
+    // Initialize multiplayer connection
+    initializeMultiplayer();
+    
     // Start the game loop
     requestAnimationFrame(gameLoop);
 });
@@ -45,12 +48,23 @@ function updateGameState(timestamp) {
     
     // Update enemies
     updateEnemies();
+    
+    // Send player position to server (for multiplayer)
+    if (socket && socket.connected && (!gameState.lastPositionUpdate || gameState.lastPositionUpdate + 50 < Date.now())) {
+        sendPlayerPosition();
+        gameState.lastPositionUpdate = Date.now();
+    }
 }
 
 // Render the game
 function renderGame() {
     // Draw the world
     drawWorld();
+    
+    // Draw other players (for multiplayer)
+    if (socket && socket.connected) {
+        drawOtherPlayers();
+    }
     
     // Draw the player
     drawPlayer();
