@@ -78,7 +78,8 @@ function initializeGameState() {
         },
         // Multiplayer specific properties
         lastPositionUpdate: 0,
-        isMultiplayer: true
+        isMultiplayer: true,
+        chunkMetadata: {} // Track metadata for chunks
     };
     
     console.log("Game state initialized with player inventory:", JSON.stringify(window.gameState.player.inventory));

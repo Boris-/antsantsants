@@ -82,6 +82,12 @@ function initializeWorld() {
         // Save the newly generated world
         saveWorld();
     }
+    
+    // Ensure the world seed is a number
+    gameState.worldSeed = Number(gameState.worldSeed);
+    
+    // Log the seed for debugging
+    console.log('World seed (after initialization):', gameState.worldSeed, 'Type:', typeof gameState.worldSeed);
 }
 
 // Save world state to file
@@ -95,7 +101,8 @@ function saveWorld() {
             chunks: gameState.chunks,
             worldMetadata: {
                 ...gameState.worldMetadata,
-                lastSaved: Date.now()
+                lastSaved: Date.now(),
+                hasUnsavedChanges: false
             }
         };
         
@@ -242,11 +249,18 @@ io.on('connection', (socket) => {
             // Ensure chunk exists in server memory
             if (!gameState.chunks[chunkKey]) {
                 gameState.chunks[chunkKey] = worldGeneration.generateChunk(chunkX, chunkY, gameState);
+                
+                // Mark as server-generated
+                if (!gameState.chunks[chunkKey].metadata) {
+                    gameState.chunks[chunkKey].metadata = {};
+                }
+                gameState.chunks[chunkKey].metadata.serverGenerated = true;
+                gameState.chunks[chunkKey].metadata.generatedAt = Date.now();
             }
             
             // Update tile in chunk
             const localX = Math.floor(x / 32) % 16; // x % CHUNK_SIZE
-            const localY = Math.floor(y / 32) % 16; // y % CHUNK_SIZE
+            const localY = Math.floor(y / 32) % 16;
             
             if (gameState.chunks[chunkKey] && 
                 gameState.chunks[chunkKey][localY] && 
@@ -303,14 +317,23 @@ io.on('connection', (socket) => {
         
         // Generate chunk if it doesn't exist
         if (!gameState.chunks[chunkKey]) {
+            console.log(`Generating new chunk at ${chunkX},${chunkY} with seed ${gameState.worldSeed}`);
             gameState.chunks[chunkKey] = worldGeneration.generateChunk(chunkX, chunkY, gameState);
+            
+            // Mark this chunk as server-generated to ensure consistency
+            if (!gameState.chunks[chunkKey].metadata) {
+                gameState.chunks[chunkKey].metadata = {};
+            }
+            gameState.chunks[chunkKey].metadata.serverGenerated = true;
+            gameState.chunks[chunkKey].metadata.generatedAt = Date.now();
         }
         
         // Send chunk data to requesting player
         socket.emit('chunkData', {
             chunkX,
             chunkY,
-            data: gameState.chunks[chunkKey]
+            data: gameState.chunks[chunkKey],
+            serverGenerated: true
         });
     });
     
@@ -323,6 +346,39 @@ io.on('connection', (socket) => {
         
         // Broadcast player left to all other players
         io.emit('playerLeft', socket.id);
+    });
+    
+    // Handle chunk saving from client
+    socket.on('saveChunk', (data) => {
+        const { chunkX, chunkY, data: chunkData } = data;
+        const chunkKey = `${chunkX},${chunkY}`;
+        
+        // Only update if the chunk exists
+        if (gameState.chunks[chunkKey]) {
+            // Preserve metadata
+            const metadata = gameState.chunks[chunkKey].metadata || {};
+            
+            // Update chunk data
+            gameState.chunks[chunkKey] = chunkData;
+            
+            // Restore metadata with updated timestamp
+            gameState.chunks[chunkKey].metadata = {
+                ...metadata,
+                lastUpdated: Date.now(),
+                lastUpdatedBy: socket.id
+            };
+            
+            // Broadcast chunk update to all other players
+            socket.broadcast.emit('chunkData', {
+                chunkX,
+                chunkY,
+                data: gameState.chunks[chunkKey],
+                serverGenerated: true
+            });
+            
+            // Mark world as having unsaved changes
+            gameState.worldMetadata.hasUnsavedChanges = true;
+        }
     });
 });
 

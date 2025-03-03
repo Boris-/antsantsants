@@ -59,8 +59,9 @@ function setupSocketEvents() {
         
         console.log('Other players after removing self:', otherPlayers);
         
-        // Set world seed from server
-        gameState.worldSeed = data.worldSeed;
+        // Set world seed from server (ensure it's a number)
+        gameState.worldSeed = Number(data.worldSeed);
+        console.log('World seed received from server:', gameState.worldSeed, 'Type:', typeof gameState.worldSeed);
         
         // Set terrain heights from server
         gameState.terrainHeights = data.terrainHeights;
@@ -125,7 +126,56 @@ function setupSocketEvents() {
     socket.on('chunkData', (data) => {
         // Store chunk data
         const chunkKey = `${data.chunkX},${data.chunkY}`;
-        gameState.chunks[chunkKey] = data.data;
+        
+        // If this is a server-generated chunk or we don't have this chunk yet, use the server's version
+        if (data.serverGenerated || !gameState.chunks[chunkKey]) {
+            gameState.chunks[chunkKey] = data.data;
+            
+            // Mark this chunk as loaded from server
+            if (!gameState.chunkMetadata) {
+                gameState.chunkMetadata = {};
+            }
+            
+            if (!gameState.chunkMetadata[chunkKey]) {
+                gameState.chunkMetadata[chunkKey] = {};
+            }
+            
+            gameState.chunkMetadata[chunkKey].loadedFromServer = true;
+            gameState.chunkMetadata[chunkKey].loadedAt = Date.now();
+        } else {
+            // For chunks we already have, only update if there are differences
+            // This helps with chunks that were modified locally before server data arrived
+            let hasChanges = false;
+            
+            // Check for differences and update only if needed
+            for (let y = 0; y < data.data.length; y++) {
+                for (let x = 0; x < data.data[y].length; x++) {
+                    // Skip metadata
+                    if (y === 'metadata' || x === 'metadata') continue;
+                    
+                    // If server data differs from client data, update it
+                    if (data.data[y][x] !== gameState.chunks[chunkKey][y][x]) {
+                        gameState.chunks[chunkKey][y][x] = data.data[y][x];
+                        hasChanges = true;
+                    }
+                }
+            }
+            
+            // If we made changes, mark the chunk as updated
+            if (hasChanges) {
+                if (!gameState.chunkMetadata) {
+                    gameState.chunkMetadata = {};
+                }
+                
+                if (!gameState.chunkMetadata[chunkKey]) {
+                    gameState.chunkMetadata[chunkKey] = {};
+                }
+                
+                gameState.chunkMetadata[chunkKey].updatedFromServer = true;
+                gameState.chunkMetadata[chunkKey].lastUpdated = Date.now();
+            }
+        }
+        
         gameState.loadedChunks.add(chunkKey);
     });
     
@@ -204,12 +254,20 @@ function startPlayerInfoUpdates() {
 // Request initial chunks around player
 function requestInitialChunks() {
     // Calculate player chunk
-    const playerChunkX = Math.floor(gameState.player.x / (CHUNK_SIZE * TILE_SIZE));
-    const playerChunkY = Math.floor(gameState.player.y / (CHUNK_SIZE * TILE_SIZE));
+    const playerChunkX = Math.floor(gameState.player.x / TILE_SIZE / CHUNK_SIZE);
+    const playerChunkY = Math.floor(gameState.player.y / TILE_SIZE / CHUNK_SIZE);
     
-    // Request chunks in a 5x5 area around player
-    for (let y = playerChunkY - 2; y <= playerChunkY + 2; y++) {
-        for (let x = playerChunkX - 2; x <= playerChunkX + 2; x++) {
+    console.log(`Requesting initial chunks around player at chunk ${playerChunkX},${playerChunkY}`);
+    
+    // Request chunks in a radius around the player
+    for (let y = playerChunkY - VISIBLE_CHUNKS_RADIUS; y <= playerChunkY + VISIBLE_CHUNKS_RADIUS; y++) {
+        for (let x = playerChunkX - VISIBLE_CHUNKS_RADIUS; x <= playerChunkX + VISIBLE_CHUNKS_RADIUS; x++) {
+            // Skip if out of world bounds
+            if (x < 0 || y < 0 || x >= Math.ceil(WORLD_WIDTH / CHUNK_SIZE) || y >= Math.ceil(WORLD_HEIGHT / CHUNK_SIZE)) {
+                continue;
+            }
+            
+            // Request chunk
             requestChunk(x, y);
         }
     }

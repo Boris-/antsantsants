@@ -68,7 +68,10 @@ const gameState = {
     lastPositionUpdate: 0,
     
     // Debug mode
-    debug: false
+    debug: false,
+    
+    // New properties for chunk metadata
+    chunkMetadata: {}
 };
 
 // Initialize the game
@@ -143,12 +146,27 @@ function setTile(x, y, tileType, sendToServer = true) {
     const localX = x % gameState.chunkSize;
     const localY = y % gameState.chunkSize;
     
-    // Set tile
-    gameState.chunks[chunkKey][localY][localX] = tileType;
-    
-    // Send to server if requested
-    if (sendToServer && typeof window.sendBlockDig === 'function') {
-        window.sendBlockDig(x, y, tileType);
+    // Only update if the tile is actually changing
+    if (gameState.chunks[chunkKey][localY][localX] !== tileType) {
+        // Set tile
+        gameState.chunks[chunkKey][localY][localX] = tileType;
+        
+        // Mark chunk as locally modified
+        if (!gameState.chunkMetadata) {
+            gameState.chunkMetadata = {};
+        }
+        
+        if (!gameState.chunkMetadata[chunkKey]) {
+            gameState.chunkMetadata[chunkKey] = {};
+        }
+        
+        gameState.chunkMetadata[chunkKey].locallyModified = true;
+        gameState.chunkMetadata[chunkKey].lastModified = Date.now();
+        
+        // Send to server if requested
+        if (sendToServer && typeof window.sendBlockDig === 'function') {
+            window.sendBlockDig(x, y, tileType);
+        }
     }
 }
 

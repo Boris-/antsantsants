@@ -40,6 +40,18 @@ const BIOME_TYPES = {
     MOUNTAINS: 'Mountains'
 };
 
+// Deterministic random number generator
+function seededRandom(seed) {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+}
+
+// Get a deterministic random number based on world seed, x, y coordinates
+function getRandomForPosition(worldSeed, x, y) {
+    const combinedSeed = worldSeed + (x * 374761393) + (y * 668265263);
+    return seededRandom(combinedSeed);
+}
+
 // Initialize biome data
 function initializeBiomes(gameState) {
     // Define biome types with expanded properties
@@ -136,130 +148,131 @@ function initializeBiomes(gameState) {
     return biomeTypes;
 }
 
-// Generate biome map for the entire world
+// Generate biome map
 function generateBiomeMap(gameState) {
-    const biomeTypes = gameState.biomeTypes || initializeBiomes(gameState);
-    const biomeMap = {};
+    console.log('Generating biome map with seed:', gameState.worldSeed);
     
-    // Create noise generators using our custom PerlinNoise instead of SimplexNoise
-    const biomeNoise = new PerlinNoise(gameState.worldSeed);
-    const biomeVariationNoise = new PerlinNoise(gameState.worldSeed + 1);
+    const biomeMap = [];
     
-    // Generate biome for each x coordinate
+    // Use deterministic noise for biome generation
     for (let x = 0; x < WORLD_WIDTH; x++) {
-        // Get noise value for this x coordinate (scaled down for smoother transitions)
-        const noiseValue = (biomeNoise.noise(x / 500, 0) + 1) / 2;
-        const variationValue = (biomeVariationNoise.noise(x / 200, 0) + 1) / 2;
+        // Use deterministic random based on world seed and x position
+        const biomeRand = getRandomForPosition(gameState.worldSeed, x, 0);
         
-        // Determine biome based on noise value
-        let selectedBiome = null;
-        let prevThreshold = 0;
-        
-        for (const biomeType in biomeTypes) {
-            if (noiseValue >= prevThreshold && noiseValue < biomeTypes[biomeType].noiseThreshold) {
-                selectedBiome = biomeTypes[biomeType];
-                break;
-            }
-            prevThreshold = biomeTypes[biomeType].noiseThreshold;
+        // Determine biome type based on random value
+        let biome;
+        if (biomeRand < 0.3) {
+            biome = gameState.biomeTypes[BIOME_TYPES.PLAINS];
+        } else if (biomeRand < 0.6) {
+            biome = gameState.biomeTypes[BIOME_TYPES.FOREST];
+        } else if (biomeRand < 0.8) {
+            biome = gameState.biomeTypes[BIOME_TYPES.DESERT];
+        } else {
+            biome = gameState.biomeTypes[BIOME_TYPES.MOUNTAINS];
         }
         
-        // Default to plains if no biome selected
-        if (!selectedBiome) {
-            selectedBiome = biomeTypes[BIOME_TYPES.PLAINS];
-        }
-        
-        // Store biome for this x coordinate
-        biomeMap[x] = {
-            ...selectedBiome,
-            variation: variationValue,
-            blendFactor: 0 // For biome blending (future enhancement)
-        };
+        biomeMap[x] = biome;
     }
+    
+    // Smooth biome transitions
+    smoothBiomeMap(biomeMap, gameState);
     
     return biomeMap;
 }
 
-// Generate terrain heights for the entire world
-function generateTerrainHeights(gameState) {
-    // Initialize terrainHeights array
-    gameState.terrainHeights = new Array(WORLD_WIDTH);
+// Smooth biome transitions
+function smoothBiomeMap(biomeMap, gameState) {
+    const smoothedMap = [...biomeMap];
+    const smoothingRadius = 5;
     
-    // Base surface level
-    const baseSurfaceLevel = Math.floor(WORLD_HEIGHT / 3);
-    
-    // Create noise generators
-    const mainNoise = new PerlinNoise(gameState.worldSeed);
-    const detailNoise = new PerlinNoise(gameState.worldSeed + 1);
-    
-    // Generate heights using multiple layers of noise
     for (let x = 0; x < WORLD_WIDTH; x++) {
-        // Get biome at this x position
-        const biome = gameState.biomeMap[x];
+        // Skip edges
+        if (x < smoothingRadius || x >= WORLD_WIDTH - smoothingRadius) {
+            continue;
+        }
         
-        // Use multiple noise octaves for more natural terrain
-        const mainScale = 0.01;
-        const detailScale = 0.05;
+        // Check for biome transitions
+        const currentBiome = biomeMap[x];
+        const prevBiome = biomeMap[x - 1];
         
-        // Main terrain shape
-        const mainValue = mainNoise.noise(x * mainScale, 0);
-        
-        // Detail variations
-        const detailValue = detailNoise.noise(x * detailScale, 0) * 0.3;
-        
-        // Combine noise values
-        const combinedNoise = mainValue + detailValue;
-        
-        // Apply biome-specific height variation
-        const heightVariation = biome.heightModifier;
-        
-        // Calculate final height
-        gameState.terrainHeights[x] = Math.floor(baseSurfaceLevel + combinedNoise * heightVariation);
+        if (currentBiome !== prevBiome) {
+            // Found a transition, smooth it
+            for (let i = 1; i <= smoothingRadius; i++) {
+                // Use deterministic random to decide which biome to use in the transition zone
+                const transitionRand = getRandomForPosition(gameState.worldSeed, x, i);
+                
+                if (transitionRand < 0.5) {
+                    smoothedMap[x - i] = currentBiome;
+                } else {
+                    smoothedMap[x + i] = prevBiome;
+                }
+            }
+        }
     }
     
-    // Add special terrain features
-    addTerrainFeatures(gameState);
-    
-    return gameState.terrainHeights;
+    // Copy smoothed map back to biome map
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+        biomeMap[x] = smoothedMap[x];
+    }
 }
 
-// Add special terrain features like mountains, valleys, etc.
-function addTerrainFeatures(gameState) {
-    const random = new SeededRandom(gameState.worldSeed + 4);
+// Generate terrain heights
+function generateTerrainHeights(gameState) {
+    console.log('Generating terrain heights with seed:', gameState.worldSeed);
     
-    // Add some mountains
-    const numMountains = 5 + Math.floor(random.next() * 10);
-    for (let i = 0; i < numMountains; i++) {
-        const mountainCenter = Math.floor(random.next() * WORLD_WIDTH);
-        const mountainWidth = 20 + Math.floor(random.next() * 40);
-        const mountainHeight = 20 + Math.floor(random.next() * 30);
+    const terrainHeights = [];
+    
+    // Base terrain height
+    const baseHeight = Math.floor(WORLD_HEIGHT * 0.5);
+    
+    // Generate terrain heights using deterministic noise
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+        // Get biome at this position
+        const biome = gameState.biomeMap[x];
         
-        // Create mountain shape
-        for (let x = mountainCenter - mountainWidth; x <= mountainCenter + mountainWidth; x++) {
-            if (x >= 0 && x < WORLD_WIDTH) {
-                const distance = Math.abs(x - mountainCenter);
-                const heightReduction = (distance / mountainWidth) * mountainHeight;
-                const newHeight = gameState.terrainHeights[x] - mountainHeight + heightReduction;
-                gameState.terrainHeights[x] = Math.min(gameState.terrainHeights[x], newHeight);
-            }
+        // Base height variation using deterministic noise
+        const noiseX1 = seededRandom(gameState.worldSeed + x * 0.01);
+        const noiseX2 = seededRandom(gameState.worldSeed + x * 0.1);
+        const noiseX3 = seededRandom(gameState.worldSeed + x * 0.5);
+        
+        // Combine different noise frequencies for more natural terrain
+        const combinedNoise = (noiseX1 * 0.5 + noiseX2 * 0.3 + noiseX3 * 0.2) * 2 - 1;
+        
+        // Apply biome-specific height modifiers
+        let heightModifier = 0;
+        if (biome) {
+            heightModifier = biome.heightModifier || 0;
         }
+        
+        // Calculate final height
+        const height = Math.floor(baseHeight + combinedNoise * 20 + heightModifier);
+        
+        // Store height
+        terrainHeights[x] = height;
     }
     
-    // Add some valleys/canyons
-    const numValleys = 3 + Math.floor(random.next() * 7);
-    for (let i = 0; i < numValleys; i++) {
-        const valleyCenter = Math.floor(random.next() * WORLD_WIDTH);
-        const valleyWidth = 15 + Math.floor(random.next() * 30);
-        const valleyDepth = 15 + Math.floor(random.next() * 25);
-        
-        // Create valley shape
-        for (let x = valleyCenter - valleyWidth; x <= valleyCenter + valleyWidth; x++) {
-            if (x >= 0 && x < WORLD_WIDTH) {
-                const distance = Math.abs(x - valleyCenter);
-                const depthReduction = (distance / valleyWidth) * valleyDepth;
-                const newHeight = gameState.terrainHeights[x] + valleyDepth - depthReduction;
-                gameState.terrainHeights[x] = Math.max(gameState.terrainHeights[x], newHeight);
-            }
-        }
+    // Smooth terrain
+    smoothTerrain(terrainHeights);
+    
+    // Store in game state
+    gameState.terrainHeights = terrainHeights;
+}
+
+// Smooth terrain heights
+function smoothTerrain(terrainHeights) {
+    const smoothedHeights = [...terrainHeights];
+    
+    // Apply simple smoothing
+    for (let x = 1; x < WORLD_WIDTH - 1; x++) {
+        // Average with neighbors
+        smoothedHeights[x] = Math.floor(
+            (terrainHeights[x - 1] + terrainHeights[x] + terrainHeights[x + 1]) / 3
+        );
+    }
+    
+    // Copy smoothed heights back
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+        terrainHeights[x] = smoothedHeights[x];
     }
 }
 
@@ -283,18 +296,18 @@ function generateChunk(chunkX, chunkY, gameState) {
                 
                 if (worldY > terrainHeight + 20) {
                     // Deep underground - more chance of stone and ore
-                    const rand = Math.random();
+                    const rand = getRandomForPosition(gameState.worldSeed, worldX, worldY);
                     if (rand < 0.7) {
                         tileType = TILE_TYPES.STONE;
                     } else if (rand < 0.85) {
                         tileType = TILE_TYPES.DIRT;
                     } else {
                         // Generate different types of ore based on depth
-                        tileType = generateOre(worldX, worldY, terrainHeight);
+                        tileType = generateOre(worldX, worldY, terrainHeight, gameState.worldSeed);
                     }
                 } else if (worldY > terrainHeight) {
                     // Underground - mostly dirt with some stone
-                    const rand = Math.random();
+                    const rand = getRandomForPosition(gameState.worldSeed, worldX, worldY);
                     if (rand < 0.8) {
                         tileType = TILE_TYPES.DIRT;
                     } else {
@@ -333,51 +346,51 @@ function generateChunk(chunkX, chunkY, gameState) {
         }
     }
     
-    // Add biome-specific features
-    addBiomeFeatures(chunk, chunkX, chunkY, gameState);
+    // Add biome-specific features with deterministic randomness
+    addBiomeFeaturesWithSeed(chunk, chunkX, chunkY, gameState);
     
     return chunk;
 }
 
-// Generate ore based on depth
-function generateOre(worldX, worldY, terrainHeight) {
+// Generate ore based on depth with deterministic randomness
+function generateOre(worldX, worldY, terrainHeight, worldSeed) {
     const depth = worldY - terrainHeight;
     
     // Different ore types have different spawn rates based on depth
     if (depth > 80) {
         // Deep underground - chance for diamond
-        const rand = Math.random();
+        const rand = getRandomForPosition(worldSeed, worldX, worldY);
         if (rand < 0.02) {
             return TILE_TYPES.DIAMOND;
         } else if (rand < 0.1) {
             return TILE_TYPES.GOLD;
-        } else if (rand < 0.3) {
+        } else if (rand < 0.25) {
             return TILE_TYPES.IRON;
-        } else if (rand < 0.5) {
+        } else if (rand < 0.4) {
             return TILE_TYPES.COAL;
         }
     } else if (depth > 50) {
         // Mid-deep - gold and iron
-        const rand = Math.random();
-        if (rand < 0.1) {
+        const rand = getRandomForPosition(worldSeed, worldX, worldY);
+        if (rand < 0.08) {
             return TILE_TYPES.GOLD;
-        } else if (rand < 0.3) {
+        } else if (rand < 0.25) {
             return TILE_TYPES.IRON;
-        } else if (rand < 0.5) {
+        } else if (rand < 0.4) {
             return TILE_TYPES.COAL;
         }
-    } else if (depth > 30) {
+    } else if (depth > 20) {
         // Mid-level - mostly iron and coal
-        const rand = Math.random();
+        const rand = getRandomForPosition(worldSeed, worldX, worldY);
         if (rand < 0.2) {
             return TILE_TYPES.IRON;
-        } else if (rand < 0.5) {
+        } else if (rand < 0.4) {
             return TILE_TYPES.COAL;
         }
     } else {
         // Near surface - mostly coal
-        const rand = Math.random();
-        if (rand < 0.3) {
+        const rand = getRandomForPosition(worldSeed, worldX, worldY);
+        if (rand < 0.15) {
             return TILE_TYPES.COAL;
         }
     }
@@ -385,102 +398,221 @@ function generateOre(worldX, worldY, terrainHeight) {
     return TILE_TYPES.STONE;
 }
 
-// Add biome-specific features to a chunk
-function addBiomeFeatures(chunk, chunkX, chunkY, gameState) {
-    // Loop through each column in the chunk
-    for (let x = 0; x < CHUNK_SIZE; x++) {
-        const worldX = chunkX * CHUNK_SIZE + x;
-        const biome = getBiomeAt(worldX, gameState);
-        
-        if (!biome) continue;
-        
-        // Find the surface level for this column
-        let surfaceY = -1;
-        for (let y = 0; y < CHUNK_SIZE; y++) {
+// Add biome features with deterministic randomness
+function addBiomeFeaturesWithSeed(chunk, chunkX, chunkY, gameState) {
+    // Iterate through the chunk
+    for (let y = 0; y < CHUNK_SIZE; y++) {
+        for (let x = 0; x < CHUNK_SIZE; x++) {
+            // Calculate world coordinates
+            const worldX = chunkX * CHUNK_SIZE + x;
             const worldY = chunkY * CHUNK_SIZE + y;
-            if (chunk[y][x] === TILE_TYPES.GRASS || chunk[y][x] === TILE_TYPES.SAND) {
-                surfaceY = y;
-                break;
-            }
-        }
-        
-        // Skip if no surface found in this chunk column
-        if (surfaceY === -1) continue;
-        
-        // Add features based on biome
-        if (biome.name === BIOME_TYPES.PLAINS || biome.name === BIOME_TYPES.FOREST) {
-            // Add trees
-            if (biome.features.trees && Math.random() < biome.features.trees.frequency) {
-                generateTree(chunk, x, surfaceY, chunkX * CHUNK_SIZE + x, chunkY * CHUNK_SIZE + surfaceY, biome);
+            
+            // Skip if outside world bounds
+            if (worldX < 0 || worldX >= WORLD_WIDTH) {
+                continue;
             }
             
-            // Add tall grass
-            if (biome.features.tallGrass && Math.random() < biome.features.tallGrass.frequency) {
-                if (surfaceY > 0 && chunk[surfaceY-1][x] === TILE_TYPES.AIR) {
-                    chunk[surfaceY-1][x] = TILE_TYPES.TALL_GRASS;
-                }
-            }
+            // Get terrain height at this x position
+            const terrainHeight = gameState.terrainHeights[worldX] || 0;
             
-            // Add flowers
-            if (biome.features.flowers && Math.random() < biome.features.flowers.frequency) {
-                if (surfaceY > 0 && chunk[surfaceY-1][x] === TILE_TYPES.AIR) {
-                    chunk[surfaceY-1][x] = TILE_TYPES.FLOWER;
-                }
-            }
-        } else if (biome.name === BIOME_TYPES.DESERT) {
-            // Add cacti
-            if (biome.features.cacti && Math.random() < biome.features.cacti.frequency) {
-                if (surfaceY > 0 && chunk[surfaceY-1][x] === TILE_TYPES.AIR) {
-                    chunk[surfaceY-1][x] = TILE_TYPES.CACTUS;
-                    if (surfaceY > 1 && chunk[surfaceY-2][x] === TILE_TYPES.AIR) {
-                        chunk[surfaceY-2][x] = TILE_TYPES.CACTUS;
-                    }
+            // Only add features at or near the surface
+            if (worldY <= terrainHeight && worldY >= terrainHeight - 1) {
+                // Get biome at this x position
+                const biome = getBiomeAt(worldX, gameState);
+                
+                if (biome) {
+                    // Use deterministic random for feature generation
+                    const featureRand = getRandomForPosition(gameState.worldSeed, worldX, worldY);
+                    
+                    // Add biome-specific features
+                    addBiomeFeature(chunk, x, y, worldX, worldY, biome, terrainHeight, featureRand, gameState.worldSeed);
                 }
             }
         }
     }
 }
 
-// Generate a tree at the specified location
-function generateTree(chunk, localX, localY, worldX, worldY, biome) {
-    // Determine tree height based on biome
-    const minHeight = biome.features.trees.minHeight || 3;
-    const maxHeight = biome.features.trees.maxHeight || 6;
-    const treeHeight = minHeight + Math.floor(Math.random() * (maxHeight - minHeight + 1));
+// Add a specific biome feature at a position
+function addBiomeFeature(chunk, localX, localY, worldX, worldY, biome, terrainHeight, featureRand, worldSeed) {
+    // Only add features at the surface level
+    if (worldY !== terrainHeight - 1) return;
     
-    // Check if tree can fit in the chunk
-    if (localY - treeHeight < 0) return;
+    // Check if this position already has a feature
+    if (chunk[localY][localX] !== TILE_TYPES.AIR) return;
     
-    // Create trunk
-    for (let y = 1; y <= treeHeight; y++) {
-        if (localY - y >= 0) {
-            chunk[localY - y][localX] = TILE_TYPES.WOOD;
-        }
+    // Different features based on biome type
+    switch (biome.name) {
+        case BIOME_TYPES.PLAINS:
+            // Trees (rare)
+            if (biome.features.trees && featureRand < biome.features.trees.frequency) {
+                generateTreeWithSeed(chunk, localX, localY, worldX, worldY, biome, worldSeed);
+                return;
+            }
+            
+            // Adjust rand for next feature check
+            featureRand = getRandomForPosition(worldSeed, worldX, worldY + 100);
+            
+            // Tall grass (common)
+            if (biome.features.tallGrass && featureRand < biome.features.tallGrass.frequency) {
+                chunk[localY][localX] = TILE_TYPES.TALL_GRASS;
+                return;
+            }
+            
+            // Adjust rand for next feature check
+            featureRand = getRandomForPosition(worldSeed, worldX, worldY + 200);
+            
+            // Flowers (uncommon)
+            if (biome.features.flowers && featureRand < biome.features.flowers.frequency) {
+                chunk[localY][localX] = TILE_TYPES.FLOWER;
+                return;
+            }
+            
+            // Adjust rand for next feature check
+            featureRand = getRandomForPosition(worldSeed, worldX, worldY + 300);
+            
+            // Bushes (uncommon)
+            if (biome.features.bushes && featureRand < biome.features.bushes.frequency) {
+                chunk[localY][localX] = TILE_TYPES.BUSH;
+                return;
+            }
+            break;
+            
+        case BIOME_TYPES.FOREST:
+            // Trees (common)
+            if (biome.features.trees && featureRand < biome.features.trees.frequency) {
+                generateTreeWithSeed(chunk, localX, localY, worldX, worldY, biome, worldSeed);
+                return;
+            }
+            
+            // Adjust rand for next feature check
+            featureRand = getRandomForPosition(worldSeed, worldX, worldY + 100);
+            
+            // Mushrooms (uncommon)
+            if (biome.features.mushrooms && featureRand < biome.features.mushrooms.frequency) {
+                chunk[localY][localX] = TILE_TYPES.MUSHROOM;
+                return;
+            }
+            
+            // Adjust rand for next feature check
+            featureRand = getRandomForPosition(worldSeed, worldX, worldY + 200);
+            
+            // Tall grass (uncommon)
+            if (biome.features.tallGrass && featureRand < biome.features.tallGrass.frequency) {
+                chunk[localY][localX] = TILE_TYPES.TALL_GRASS;
+                return;
+            }
+            
+            // Adjust rand for next feature check
+            featureRand = getRandomForPosition(worldSeed, worldX, worldY + 300);
+            
+            // Bushes (uncommon)
+            if (biome.features.bushes && featureRand < biome.features.bushes.frequency) {
+                chunk[localY][localX] = TILE_TYPES.BUSH;
+                return;
+            }
+            break;
+            
+        case BIOME_TYPES.DESERT:
+            // Cacti (uncommon)
+            if (biome.features.cacti && featureRand < biome.features.cacti.frequency) {
+                chunk[localY][localX] = TILE_TYPES.CACTUS;
+                
+                // Try to add a second cactus block above if within chunk bounds
+                if (localY > 0) {
+                    chunk[localY - 1][localX] = TILE_TYPES.CACTUS;
+                }
+                return;
+            }
+            break;
+            
+        case BIOME_TYPES.MOUNTAINS:
+            // Snow patches
+            if (featureRand < 0.2) {
+                chunk[localY][localX] = TILE_TYPES.SNOW;
+                return;
+            }
+            
+            // Adjust rand for next feature check
+            featureRand = getRandomForPosition(worldSeed, worldX, worldY + 100);
+            
+            // Trees (rare, only at lower elevations)
+            if (biome.features.trees && featureRand < biome.features.trees.frequency * 0.5) {
+                generateTreeWithSeed(chunk, localX, localY, worldX, worldY, biome, worldSeed);
+                return;
+            }
+            break;
+    }
+}
+
+// Generate a tree with deterministic randomness
+function generateTreeWithSeed(chunk, localX, localY, worldX, worldY, biome, worldSeed) {
+    // Determine tree height based on biome and seed
+    let minHeight = 4;
+    let maxHeight = 7;
+    
+    if (biome.features && biome.features.trees) {
+        minHeight = biome.features.trees.minHeight || minHeight;
+        maxHeight = biome.features.trees.maxHeight || maxHeight;
     }
     
-    // Create leaves
-    const leafRadius = 2;
-    for (let y = treeHeight - leafRadius; y >= treeHeight - (leafRadius * 2); y--) {
-        if (localY - y < 0) continue;
+    // Use deterministic random for tree height
+    const heightRand = getRandomForPosition(worldSeed, worldX, worldY + 500);
+    const treeHeight = Math.floor(minHeight + heightRand * (maxHeight - minHeight + 1));
+    
+    // Generate tree trunk
+    for (let h = 0; h < treeHeight; h++) {
+        // Skip if outside chunk bounds
+        if (localY - h < 0) continue;
         
-        for (let lx = -leafRadius; lx <= leafRadius; lx++) {
-            const leafX = localX + lx;
-            if (leafX < 0 || leafX >= CHUNK_SIZE) continue;
-            
-            // Make leaves more dense near the trunk
-            const distance = Math.abs(lx);
-            if (distance <= leafRadius && Math.random() > distance / (leafRadius + 1)) {
-                chunk[localY - y][leafX] = TILE_TYPES.LEAVES;
+        chunk[localY - h][localX] = TILE_TYPES.WOOD;
+    }
+    
+    // Generate tree leaves
+    const leafStartHeight = Math.floor(treeHeight * 0.6);
+    const leafRadius = Math.floor(treeHeight * 0.4) + 1;
+    
+    for (let h = leafStartHeight; h < treeHeight + 2; h++) {
+        // Skip if outside chunk bounds
+        if (localY - h < 0) continue;
+        
+        const layerRadius = h === treeHeight + 1 ? 1 : leafRadius;
+        
+        for (let lx = -layerRadius; lx <= layerRadius; lx++) {
+            for (let ly = -layerRadius; ly <= layerRadius; ly++) {
+                // Skip trunk position
+                if (lx === 0 && ly === 0 && h < treeHeight) continue;
+                
+                // Calculate distance from trunk
+                const distance = Math.sqrt(lx * lx + ly * ly);
+                
+                // Skip if too far from trunk
+                if (distance > layerRadius) continue;
+                
+                // Skip if outside chunk bounds
+                if (localX + lx < 0 || localX + lx >= CHUNK_SIZE || 
+                    localY - h + ly < 0 || localY - h + ly >= CHUNK_SIZE) continue;
+                
+                // Skip if not air (don't overwrite existing blocks)
+                if (chunk[localY - h + ly][localX + lx] !== TILE_TYPES.AIR) continue;
+                
+                // Add leaf block
+                chunk[localY - h + ly][localX + lx] = TILE_TYPES.LEAVES;
             }
         }
     }
 }
 
-// Generate cave noise
+// Generate cave noise with deterministic randomness
 function generateCaveNoise(x, y, seed) {
-    const caveNoise = new PerlinNoise(seed + 2);
-    const scale = 0.05;
-    return caveNoise.noise(x * scale, y * scale);
+    // Use a simple but deterministic noise function
+    const noiseX = seededRandom(seed + x * 0.1);
+    const noiseY = seededRandom(seed + y * 0.1);
+    const noise = seededRandom(seed + noiseX * 10000 + noiseY * 1000);
+    
+    // Add some variation based on position
+    const variation = (Math.sin(x * 0.1) + Math.cos(y * 0.1)) * 0.1;
+    
+    return noise + variation;
 }
 
 // Get biome at a specific x coordinate

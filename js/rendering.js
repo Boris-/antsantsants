@@ -547,11 +547,40 @@ function unloadDistantChunks(startChunkX, endChunkX, startChunkY, endChunkY) {
         if (chunkX < startChunkX - unloadDistance || chunkX > endChunkX + unloadDistance ||
             chunkY < startChunkY - unloadDistance || chunkY > endChunkY + unloadDistance) {
             
-            // If chunk has been modified, mark for saving
-            gameState.hasUnsavedChanges = true;
+            // If chunk has been modified, ensure it's saved to server before unloading
+            if (gameState.isMultiplayer && window.socket && window.socket.connected) {
+                // Check if we have metadata for this chunk
+                const hasMetadata = gameState.chunkMetadata && gameState.chunkMetadata[chunkKey];
+                
+                // Only send to server if it was loaded from server or has local modifications
+                if (hasMetadata && (gameState.chunkMetadata[chunkKey].loadedFromServer || 
+                                   gameState.chunkMetadata[chunkKey].locallyModified)) {
+                    // Send chunk back to server before unloading
+                    window.socket.emit('saveChunk', {
+                        chunkX: chunkX,
+                        chunkY: chunkY,
+                        data: gameState.chunks[chunkKey]
+                    });
+                    
+                    console.log(`Saved chunk ${chunkKey} to server before unloading`);
+                }
+            } else {
+                // For single player, mark for local saving
+                gameState.hasUnsavedChanges = true;
+            }
+            
+            // Remove from loaded chunks set if it exists
+            if (gameState.loadedChunks && gameState.loadedChunks.has(chunkKey)) {
+                gameState.loadedChunks.delete(chunkKey);
+            }
             
             // Remove from loaded chunks
             delete gameState.chunks[chunkKey];
+            
+            // Also remove metadata if it exists
+            if (gameState.chunkMetadata && gameState.chunkMetadata[chunkKey]) {
+                delete gameState.chunkMetadata[chunkKey];
+            }
         }
     }
 }
