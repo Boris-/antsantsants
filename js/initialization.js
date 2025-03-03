@@ -482,8 +482,23 @@ function addToInventory(tileType) {
             itemName = 'unknown';
     }
     
-    // Add to inventory
-    window.gameState.inventory[itemName] = (window.gameState.inventory[itemName] || 0) + 1;
+    // Add to player's inventory instead of window.gameState.inventory
+    if (window.gameState && window.gameState.player && window.gameState.player.inventory) {
+        // Check if the item exists in the inventory, if not initialize it
+        if (window.gameState.player.inventory[itemName] === undefined) {
+            window.gameState.player.inventory[itemName] = 0;
+        }
+        
+        // Increment the item count
+        window.gameState.player.inventory[itemName] += 1;
+        
+        // Update the inventory display
+        if (typeof window.updateInventoryDisplay === 'function') {
+            window.updateInventoryDisplay();
+        }
+    } else {
+        console.error("Player inventory not initialized!");
+    }
     
     // Update score based on item value
     if (tileType === TILE_TYPES.COAL) {

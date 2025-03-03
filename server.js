@@ -78,7 +78,17 @@ io.on('connection', (socket) => {
         width: 20,
         height: 30,
         color: getRandomColor(),
-        direction: 1 // 1 for right, -1 for left
+        direction: 1, // 1 for right, -1 for left
+        inventory: {
+            dirt: 0,
+            stone: 0,
+            grass: 0,
+            sand: 0,
+            coal: 0,
+            iron: 0,
+            gold: 0,
+            diamond: 0
+        }
     };
     
     // Send initial game state to new player
@@ -110,9 +120,23 @@ io.on('connection', (socket) => {
         }
     });
     
+    // Handle inventory updates
+    socket.on('inventoryUpdate', (data) => {
+        if (gameState.players[socket.id]) {
+            // Update player's inventory
+            gameState.players[socket.id].inventory = data.inventory;
+            
+            // Broadcast inventory update to all other players
+            socket.broadcast.emit('playerInventoryUpdated', {
+                id: socket.id,
+                inventory: data.inventory
+            });
+        }
+    });
+    
     // Handle block digging
     socket.on('blockDig', (data) => {
-        const { x, y, tileType } = data;
+        const { x, y, tileType, itemCollected } = data;
         
         // Create a unique key for this block position
         const blockKey = `${x},${y}`;
@@ -144,13 +168,35 @@ io.on('connection', (socket) => {
                 
                 // Only update if the tile is actually changing
                 if (gameState.chunks[chunkKey][localY][localX] !== tileType) {
+                    // Store the original tile type before changing it
+                    const originalTileType = gameState.chunks[chunkKey][localY][localX];
+                    
+                    // Update the tile
                     gameState.chunks[chunkKey][localY][localX] = tileType;
                     
                     // Record this update time
                     gameState.recentBlockUpdates.set(blockKey, now);
                     
+                    // If an item was collected, update the player's inventory
+                    if (itemCollected && gameState.players[socket.id]) {
+                        // Ensure the inventory property exists
+                        if (!gameState.players[socket.id].inventory) {
+                            gameState.players[socket.id].inventory = {};
+                        }
+                        
+                        // Increment the item count
+                        gameState.players[socket.id].inventory[itemCollected] = 
+                            (gameState.players[socket.id].inventory[itemCollected] || 0) + 1;
+                    }
+                    
                     // Broadcast block update to all players, including the player ID who made the change
-                    io.emit('blockUpdate', { x, y, tileType, playerId: socket.id });
+                    io.emit('blockUpdate', { 
+                        x, 
+                        y, 
+                        tileType, 
+                        playerId: socket.id,
+                        originalTileType
+                    });
                 }
             }
         }
@@ -207,7 +253,7 @@ function getRandomColor() {
 initializeWorld();
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 }); 

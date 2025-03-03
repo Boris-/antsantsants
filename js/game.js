@@ -49,6 +49,18 @@ function gameLoop(timestamp) {
     const deltaTime = timestamp - gameState.lastFrameTime;
     gameState.lastFrameTime = timestamp;
     
+    // Calculate FPS
+    if (deltaTime > 0) {
+        // Use a moving average for smoother FPS display
+        const fps = 1000 / deltaTime;
+        if (!gameState.fps) {
+            gameState.fps = fps;
+        } else {
+            // Smooth the FPS value (80% previous, 20% current)
+            gameState.fps = gameState.fps * 0.8 + fps * 0.2;
+        }
+    }
+    
     // Update game state
     updateGame(deltaTime);
     
@@ -386,6 +398,10 @@ function handleDigging() {
                     // Record this dig time
                     recentlyDugBlocks.set(blockKey, now);
                     
+                    // Add to inventory before changing the tile
+                    // This ensures we're adding the correct item to inventory
+                    addToInventory(currentTile);
+                    
                     // Set tile to air
                     setTile(tileX, tileY, TILE_TYPES.AIR);
                     
@@ -417,9 +433,6 @@ function handleDigging() {
                             createdAt: Date.now()
                         });
                     }
-                    
-                    // Add to inventory
-                    addToInventory(currentTile);
                     
                     // Play digging sound
                     // playSound('dig');

@@ -25,7 +25,7 @@ setInterval(cleanupRecentBlockUpdates, 30000);
 // Initialize multiplayer connection
 function initializeMultiplayer() {
     // Connect to the server
-    socket = io('http://localhost:3000');
+    socket = io('http://localhost:3001');
     
     // Set up event handlers
     setupSocketEvents();
@@ -146,17 +146,28 @@ function setupSocketEvents() {
                 // Update tile and create particles for other players' actions
                 setTile(worldX, worldY, data.tileType, false);
                 
-                // Use the improved particle system from game.js
-                if (typeof createParticles === 'function') {
-                    // Get the center of the tile
-                    const particleX = worldX * TILE_SIZE + TILE_SIZE / 2;
-                    const particleY = worldY * TILE_SIZE + TILE_SIZE / 2;
-                    const particleColor = getTileColor(data.tileType);
-                    
-                    // Create particles with the improved system
-                    createParticles(particleX, particleY, particleColor, 20);
+                // If we have the original tile type, add it to the player's inventory
+                if (data.originalTileType !== undefined && data.originalTileType !== TILE_TYPES.AIR) {
+                    // Use the improved particle system from game.js
+                    if (typeof createParticles === 'function') {
+                        // Get the center of the tile
+                        const particleX = worldX * TILE_SIZE + TILE_SIZE / 2;
+                        const particleY = worldY * TILE_SIZE + TILE_SIZE / 2;
+                        const particleColor = getTileColor(data.originalTileType);
+                        
+                        // Create particles with the improved system
+                        createParticles(particleX, particleY, particleColor, 20);
+                    }
                 }
             }
+        }
+    });
+    
+    // Handle player inventory updates
+    socket.on('playerInventoryUpdated', (data) => {
+        // Update other player's inventory
+        if (otherPlayers[data.id]) {
+            otherPlayers[data.id].inventory = data.inventory;
         }
     });
     
@@ -165,6 +176,18 @@ function setupSocketEvents() {
         console.log('Disconnected from server');
         showNotification('Disconnected from server');
     });
+    
+    // Start regular updates of player info
+    startPlayerInfoUpdates();
+}
+
+// Function to start regular updates of player info
+function startPlayerInfoUpdates() {
+    // Update player info immediately
+    showPlayerInfo();
+    
+    // Then update every second
+    setInterval(showPlayerInfo, 1000);
 }
 
 // Request initial chunks around player
@@ -197,7 +220,19 @@ function sendPlayerPosition() {
         socket.emit('playerMove', {
             x: gameState.player.x,
             y: gameState.player.y,
-            direction: gameState.player.direction
+            direction: gameState.player.facingRight ? 1 : -1
+        });
+        
+        // Update timestamp of last position update
+        gameState.lastPositionUpdate = Date.now();
+    }
+}
+
+// Send inventory update to server
+function sendInventoryUpdate() {
+    if (socket && socket.connected && gameState.player && gameState.player.inventory) {
+        socket.emit('inventoryUpdate', {
+            inventory: gameState.player.inventory
         });
     }
 }
@@ -205,11 +240,55 @@ function sendPlayerPosition() {
 // Send block dig to server
 function sendBlockDig(x, y, tileType) {
     if (socket && socket.connected) {
+        // Determine what item was collected based on the original tile type
+        // We need to get the original tile type at this position
+        const worldX = Math.floor(x / TILE_SIZE);
+        const worldY = Math.floor(y / TILE_SIZE);
+        const originalTileType = getTile(worldX, worldY);
+        
+        // Convert tile type to inventory item name
+        let itemCollected = null;
+        if (originalTileType !== TILE_TYPES.AIR && originalTileType !== tileType) {
+            switch (originalTileType) {
+                case TILE_TYPES.DIRT:
+                    itemCollected = 'dirt';
+                    break;
+                case TILE_TYPES.STONE:
+                    itemCollected = 'stone';
+                    break;
+                case TILE_TYPES.GRASS:
+                    itemCollected = 'grass';
+                    break;
+                case TILE_TYPES.SAND:
+                    itemCollected = 'sand';
+                    break;
+                case TILE_TYPES.COAL:
+                    itemCollected = 'coal';
+                    break;
+                case TILE_TYPES.IRON:
+                    itemCollected = 'iron';
+                    break;
+                case TILE_TYPES.GOLD:
+                    itemCollected = 'gold';
+                    break;
+                case TILE_TYPES.DIAMOND:
+                    itemCollected = 'diamond';
+                    break;
+            }
+        }
+        
         socket.emit('blockDig', {
             x: x,
             y: y,
-            tileType: tileType
+            tileType: tileType,
+            itemCollected: itemCollected
         });
+        
+        // If we collected an item, also send an inventory update
+        if (itemCollected) {
+            // Wait a short time to ensure the server has processed the block dig
+            setTimeout(sendInventoryUpdate, 100);
+        }
     }
 }
 
@@ -446,15 +525,30 @@ function showPlayerInfo() {
         document.body.appendChild(playerInfo);
     }
     
-    // Update player info
-    playerInfo.textContent = `Your ID: ${playerId.substring(0, 5)}...`;
+    // Count connected players
+    const connectedPlayersCount = Object.keys(otherPlayers).length + 1; // +1 for the current player
+    
+    // Get FPS from game state
+    const fps = window.gameState && window.gameState.fps ? Math.round(window.gameState.fps) : 0;
+    
+    // Update player info with all requested information
+    playerInfo.innerHTML = `
+        <div>Connected players: ${connectedPlayersCount}</div>
+        <div>Your ID: ${playerId.substring(0, 5)}...</div>
+        <div>FPS: ${fps}</div>
+    `;
+    
+    // Position at bottom left
     playerInfo.style.position = 'absolute';
-    playerInfo.style.top = '10px';
+    playerInfo.style.bottom = '10px';
     playerInfo.style.left = '10px';
     playerInfo.style.color = 'white';
     playerInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     playerInfo.style.padding = '5px';
     playerInfo.style.borderRadius = '5px';
+    playerInfo.style.fontFamily = 'Arial, sans-serif';
+    playerInfo.style.fontSize = '14px';
+    playerInfo.style.zIndex = '100';
 }
 
 // Show notification

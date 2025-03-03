@@ -206,4 +206,29 @@ canvas {
     height: 2px;
     background-color: white;
     pointer-events: none;
+}
+
+/* Player info display */
+#player-info {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    z-index: 100;
+    line-height: 1.5;
+    min-width: 150px;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+}
+
+#player-info div {
+    margin-bottom: 5px;
+}
+
+#player-info div:last-child {
+    margin-bottom: 0;
 } 
