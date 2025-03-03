@@ -31,6 +31,9 @@ function initializeMultiplayer() {
     // Set up event handlers
     setupSocketEvents();
     
+    // Add reset seed button to UI
+    addResetSeedButton();
+    
     console.log('Connecting to multiplayer server...');
 }
 
@@ -236,6 +239,38 @@ function setupSocketEvents() {
         console.log('Disconnected from server');
         isConnectedToServer = false;
         showNotification('Disconnected from server');
+    });
+    
+    // Handle world reset
+    socket.on('worldReset', (data) => {
+        console.log('Received world reset notification');
+        
+        // Update world seed
+        gameState.worldSeed = Number(data.worldSeed);
+        console.log('New world seed:', gameState.worldSeed);
+        
+        // Update terrain heights
+        gameState.terrainHeights = data.terrainHeights;
+        
+        // Update biome map
+        gameState.biomeMap = data.biomeMap;
+        
+        // Clear all loaded chunks
+        gameState.chunks = {};
+        gameState.loadedChunks = new Set();
+        
+        if (gameState.chunkMetadata) {
+            gameState.chunkMetadata = {};
+        }
+        
+        // Place player at a safe location
+        placePlayerSafely();
+        
+        // Request chunks around player
+        requestInitialChunks();
+        
+        // Show notification
+        showNotification('World has been reset with seed: ' + gameState.worldSeed);
     });
     
     // Start regular updates of player info
@@ -661,9 +696,76 @@ window.addEventListener('load', () => {
     setTimeout(initializeMultiplayer, 1000);
 });
 
-// Export functions for use in other modules
+// Export functions to window object
 window.requestChunk = requestChunk;
 window.sendBlockDig = sendBlockDig;
+window.sendPlayerPosition = sendPlayerPosition;
+window.sendInventoryUpdate = sendInventoryUpdate;
+window.resetWorldSeed = resetWorldSeed; // Export the reset function
 
 // Log that the functions have been exported
-console.log("Multiplayer functions exported to window object"); 
+console.log("Multiplayer functions exported to window object");
+
+// Add a reset seed button to the UI
+function addResetSeedButton() {
+    // Check if UI container exists
+    const uiContainer = document.getElementById('ui-container');
+    if (!uiContainer) {
+        console.error("UI container not found!");
+        return;
+    }
+    
+    // Check if button already exists
+    if (document.getElementById('reset-seed-button')) {
+        return;
+    }
+    
+    // Create button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.id = 'reset-seed-container';
+    buttonContainer.className = 'ui-element';
+    
+    // Create seed input
+    const seedInput = document.createElement('input');
+    seedInput.type = 'number';
+    seedInput.id = 'seed-input';
+    seedInput.placeholder = 'Enter seed (optional)';
+    seedInput.min = 0;
+    seedInput.max = 9999999;
+    
+    // Create reset button
+    const resetButton = document.createElement('button');
+    resetButton.id = 'reset-seed-button';
+    resetButton.textContent = 'Reset World';
+    resetButton.addEventListener('click', () => {
+        const seedValue = seedInput.value ? parseInt(seedInput.value) : undefined;
+        resetWorldSeed(seedValue);
+    });
+    
+    // Add elements to container
+    buttonContainer.appendChild(seedInput);
+    buttonContainer.appendChild(resetButton);
+    
+    // Add container to UI
+    uiContainer.appendChild(buttonContainer);
+    
+    console.log('Reset seed button added to UI');
+}
+
+// Function to request world seed reset
+function resetWorldSeed(seed) {
+    if (!isConnectedToServer || !socket) {
+        showNotification('Cannot reset world: Not connected to server');
+        return;
+    }
+    
+    // Confirm with user
+    if (!confirm('Are you sure you want to reset the world? All progress will be lost.')) {
+        return;
+    }
+    
+    // Send reset request to server
+    socket.emit('resetWorldSeed', { seed });
+    
+    console.log('Sent request to reset world seed' + (seed !== undefined ? ` to ${seed}` : ''));
+} 

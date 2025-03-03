@@ -154,18 +154,30 @@ function generateBiomeMap(gameState) {
     
     const biomeMap = [];
     
-    // Use deterministic noise for biome generation
+    // Use 1D noise for biome generation to create larger, more coherent biomes
+    // We'll use multiple noise scales to create more natural transitions
+    
+    // Biome size control - larger values = larger biomes
+    const biomeScale = 0.005; 
+    
     for (let x = 0; x < WORLD_WIDTH; x++) {
-        // Use deterministic random based on world seed and x position
-        const biomeRand = getRandomForPosition(gameState.worldSeed, x, 0);
+        // Generate noise value using position and seed
+        // This creates a smooth gradient from 0-1 across the world
+        const noiseX1 = seededRandom(gameState.worldSeed + x * biomeScale);
+        const noiseX2 = seededRandom(gameState.worldSeed + 10000 + x * biomeScale * 0.5);
         
-        // Determine biome type based on random value
+        // Combine noise values to create more interesting patterns
+        // This creates a value between 0-1 that changes smoothly across the world
+        const combinedNoise = (noiseX1 * 0.7 + noiseX2 * 0.3);
+        
+        // Determine biome type based on noise value
+        // This creates distinct biome regions based on the noise value
         let biome;
-        if (biomeRand < 0.3) {
+        if (combinedNoise < 0.25) {
             biome = gameState.biomeTypes[BIOME_TYPES.PLAINS];
-        } else if (biomeRand < 0.6) {
+        } else if (combinedNoise < 0.5) {
             biome = gameState.biomeTypes[BIOME_TYPES.FOREST];
-        } else if (biomeRand < 0.8) {
+        } else if (combinedNoise < 0.75) {
             biome = gameState.biomeTypes[BIOME_TYPES.DESERT];
         } else {
             biome = gameState.biomeTypes[BIOME_TYPES.MOUNTAINS];
@@ -183,28 +195,44 @@ function generateBiomeMap(gameState) {
 // Smooth biome transitions
 function smoothBiomeMap(biomeMap, gameState) {
     const smoothedMap = [...biomeMap];
-    const smoothingRadius = 5;
     
-    for (let x = 0; x < WORLD_WIDTH; x++) {
-        // Skip edges
-        if (x < smoothingRadius || x >= WORLD_WIDTH - smoothingRadius) {
-            continue;
+    // Use a larger smoothing window for more gradual transitions
+    const smoothingRadius = 10;
+    
+    // First pass: identify transition points
+    const transitionPoints = [];
+    for (let x = 1; x < WORLD_WIDTH; x++) {
+        if (biomeMap[x] !== biomeMap[x-1]) {
+            transitionPoints.push(x);
         }
+    }
+    
+    // Second pass: smooth transitions
+    for (const transitionPoint of transitionPoints) {
+        const leftBiome = biomeMap[Math.max(0, transitionPoint-1)];
+        const rightBiome = biomeMap[Math.min(WORLD_WIDTH-1, transitionPoint)];
         
-        // Check for biome transitions
-        const currentBiome = biomeMap[x];
-        const prevBiome = biomeMap[x - 1];
-        
-        if (currentBiome !== prevBiome) {
-            // Found a transition, smooth it
-            for (let i = 1; i <= smoothingRadius; i++) {
-                // Use deterministic random to decide which biome to use in the transition zone
-                const transitionRand = getRandomForPosition(gameState.worldSeed, x, i);
-                
-                if (transitionRand < 0.5) {
-                    smoothedMap[x - i] = currentBiome;
-                } else {
-                    smoothedMap[x + i] = prevBiome;
+        // Create a gradual transition between biomes
+        for (let i = -smoothingRadius; i <= smoothingRadius; i++) {
+            const x = transitionPoint + i;
+            
+            // Skip if outside world bounds
+            if (x < 0 || x >= WORLD_WIDTH) continue;
+            
+            // Calculate transition probability based on distance from transition point
+            // Further from transition = more likely to keep original biome
+            const distanceRatio = Math.abs(i) / smoothingRadius;
+            const transitionRand = getRandomForPosition(gameState.worldSeed, x, 0);
+            
+            if (i < 0) {
+                // Left side of transition
+                if (transitionRand > distanceRatio * 0.8) {
+                    smoothedMap[x] = leftBiome;
+                }
+            } else {
+                // Right side of transition
+                if (transitionRand > distanceRatio * 0.8) {
+                    smoothedMap[x] = rightBiome;
                 }
             }
         }
@@ -214,6 +242,40 @@ function smoothBiomeMap(biomeMap, gameState) {
     for (let x = 0; x < WORLD_WIDTH; x++) {
         biomeMap[x] = smoothedMap[x];
     }
+    
+    // Final pass: remove tiny biome segments (less than minBiomeSize)
+    const minBiomeSize = 30;
+    let currentBiome = biomeMap[0];
+    let currentSize = 1;
+    let startIndex = 0;
+    
+    for (let x = 1; x < WORLD_WIDTH; x++) {
+        if (biomeMap[x] === currentBiome) {
+            currentSize++;
+        } else {
+            // Found a different biome
+            if (currentSize < minBiomeSize) {
+                // Current biome segment is too small, replace it
+                const replacementBiome = (x < WORLD_WIDTH - 1) ? biomeMap[x] : currentBiome;
+                for (let i = startIndex; i < x; i++) {
+                    biomeMap[i] = replacementBiome;
+                }
+            }
+            
+            // Start tracking the new biome
+            currentBiome = biomeMap[x];
+            currentSize = 1;
+            startIndex = x;
+        }
+    }
+    
+    // Check the last biome segment
+    if (currentSize < minBiomeSize && startIndex > 0) {
+        const replacementBiome = biomeMap[startIndex - 1];
+        for (let i = startIndex; i < WORLD_WIDTH; i++) {
+            biomeMap[i] = replacementBiome;
+        }
+    }
 }
 
 // Generate terrain heights
@@ -222,57 +284,168 @@ function generateTerrainHeights(gameState) {
     
     const terrainHeights = [];
     
-    // Base terrain height
+    // Base terrain height (middle of the world)
     const baseHeight = Math.floor(WORLD_HEIGHT * 0.5);
     
-    // Generate terrain heights using deterministic noise
+    // Generate initial terrain using multiple noise frequencies
+    // This creates a more natural-looking terrain
     for (let x = 0; x < WORLD_WIDTH; x++) {
         // Get biome at this position
         const biome = gameState.biomeMap[x];
         
-        // Base height variation using deterministic noise
-        const noiseX1 = seededRandom(gameState.worldSeed + x * 0.01);
-        const noiseX2 = seededRandom(gameState.worldSeed + x * 0.1);
-        const noiseX3 = seededRandom(gameState.worldSeed + x * 0.5);
+        // Generate multiple noise values at different frequencies
+        // Large-scale terrain features (mountains, valleys)
+        const largeScale = seededRandom(gameState.worldSeed + x * 0.001) * 2 - 1;
         
-        // Combine different noise frequencies for more natural terrain
-        const combinedNoise = (noiseX1 * 0.5 + noiseX2 * 0.3 + noiseX3 * 0.2) * 2 - 1;
+        // Medium-scale terrain features (hills, depressions)
+        const mediumScale = seededRandom(gameState.worldSeed + 10000 + x * 0.01) * 2 - 1;
+        
+        // Small-scale terrain features (bumps, small variations)
+        const smallScale = seededRandom(gameState.worldSeed + 20000 + x * 0.05) * 2 - 1;
+        
+        // Combine noise values with different weights
+        // Large-scale has most influence, small-scale has least
+        const combinedNoise = (
+            largeScale * 0.6 + 
+            mediumScale * 0.3 + 
+            smallScale * 0.1
+        );
         
         // Apply biome-specific height modifiers
         let heightModifier = 0;
         if (biome) {
             heightModifier = biome.heightModifier || 0;
+            
+            // Amplify terrain features based on biome
+            // Mountains have more dramatic terrain, plains are flatter
+            let biomeAmplitude = 1.0;
+            
+            if (biome.name === BIOME_TYPES.PLAINS) {
+                biomeAmplitude = 0.5; // Flatter terrain
+            } else if (biome.name === BIOME_TYPES.FOREST) {
+                biomeAmplitude = 0.8; // Slightly hilly
+            } else if (biome.name === BIOME_TYPES.DESERT) {
+                biomeAmplitude = 0.7; // Mostly flat with some dunes
+            } else if (biome.name === BIOME_TYPES.MOUNTAINS) {
+                biomeAmplitude = 2.0; // Very mountainous
+            }
+            
+            // Calculate final height with biome-specific amplitude
+            const height = Math.floor(
+                baseHeight + 
+                (combinedNoise * 30 * biomeAmplitude) + 
+                heightModifier
+            );
+            
+            terrainHeights[x] = height;
+        } else {
+            // Fallback if no biome is defined
+            terrainHeights[x] = baseHeight + Math.floor(combinedNoise * 20);
         }
-        
-        // Calculate final height
-        const height = Math.floor(baseHeight + combinedNoise * 20 + heightModifier);
-        
-        // Store height
-        terrainHeights[x] = height;
     }
     
-    // Smooth terrain
-    smoothTerrain(terrainHeights);
+    // Apply multiple smoothing passes for more natural terrain
+    smoothTerrain(terrainHeights, 3);
+    
+    // Add terrain features like mountains and valleys
+    addTerrainFeatures(terrainHeights, gameState);
     
     // Store in game state
     gameState.terrainHeights = terrainHeights;
 }
 
-// Smooth terrain heights
-function smoothTerrain(terrainHeights) {
-    const smoothedHeights = [...terrainHeights];
-    
-    // Apply simple smoothing
-    for (let x = 1; x < WORLD_WIDTH - 1; x++) {
-        // Average with neighbors
-        smoothedHeights[x] = Math.floor(
-            (terrainHeights[x - 1] + terrainHeights[x] + terrainHeights[x + 1]) / 3
-        );
+// Smooth terrain heights with multiple passes
+function smoothTerrain(terrainHeights, passes = 1) {
+    for (let pass = 0; pass < passes; pass++) {
+        const smoothedHeights = [...terrainHeights];
+        
+        // Use a larger window for smoother terrain
+        const smoothingRadius = 3;
+        
+        // Apply smoothing
+        for (let x = smoothingRadius; x < WORLD_WIDTH - smoothingRadius; x++) {
+            // Calculate average of nearby heights
+            let sum = 0;
+            let count = 0;
+            
+            for (let i = -smoothingRadius; i <= smoothingRadius; i++) {
+                const pos = x + i;
+                if (pos >= 0 && pos < WORLD_WIDTH) {
+                    // Weight by distance from center (closer points have more influence)
+                    const weight = 1 - Math.abs(i) / (smoothingRadius + 1);
+                    sum += terrainHeights[pos] * weight;
+                    count += weight;
+                }
+            }
+            
+            // Set smoothed height
+            if (count > 0) {
+                smoothedHeights[x] = Math.round(sum / count);
+            }
+        }
+        
+        // Copy smoothed heights back
+        for (let x = 0; x < WORLD_WIDTH; x++) {
+            terrainHeights[x] = smoothedHeights[x];
+        }
+    }
+}
+
+// Add special terrain features
+function addTerrainFeatures(terrainHeights, gameState) {
+    // Add mountains in mountain biomes
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+        const biome = gameState.biomeMap[x];
+        
+        if (biome && biome.name === BIOME_TYPES.MOUNTAINS) {
+            // Check if we should add a mountain peak here
+            const mountainRand = getRandomForPosition(gameState.worldSeed, x, 1000);
+            
+            if (mountainRand < 0.05) { // 5% chance for a mountain peak
+                // Create a mountain peak
+                const peakHeight = 40 + Math.floor(mountainRand * 30);
+                const mountainWidth = 20 + Math.floor(getRandomForPosition(gameState.worldSeed, x, 1001) * 30);
+                
+                // Apply mountain to terrain
+                for (let i = -mountainWidth; i <= mountainWidth; i++) {
+                    const pos = x + i;
+                    if (pos >= 0 && pos < WORLD_WIDTH) {
+                        // Calculate height reduction based on distance from peak
+                        const distanceRatio = Math.abs(i) / mountainWidth;
+                        const heightReduction = peakHeight * (1 - Math.pow(1 - distanceRatio, 2));
+                        
+                        // Apply mountain height
+                        terrainHeights[pos] -= Math.floor(peakHeight - heightReduction);
+                    }
+                }
+                
+                // Skip ahead to avoid multiple peaks too close together
+                x += mountainWidth;
+            }
+        }
     }
     
-    // Copy smoothed heights back
-    for (let x = 0; x < WORLD_WIDTH; x++) {
-        terrainHeights[x] = smoothedHeights[x];
+    // Add valleys/rivers
+    let valleyCount = 5 + Math.floor(getRandomForPosition(gameState.worldSeed, 0, 2000) * 5);
+    
+    for (let v = 0; v < valleyCount; v++) {
+        // Determine valley position
+        const valleyX = Math.floor(getRandomForPosition(gameState.worldSeed, v, 3000) * WORLD_WIDTH);
+        const valleyWidth = 10 + Math.floor(getRandomForPosition(gameState.worldSeed, v, 3001) * 20);
+        const valleyDepth = 10 + Math.floor(getRandomForPosition(gameState.worldSeed, v, 3002) * 15);
+        
+        // Apply valley to terrain
+        for (let i = -valleyWidth; i <= valleyWidth; i++) {
+            const pos = valleyX + i;
+            if (pos >= 0 && pos < WORLD_WIDTH) {
+                // Calculate depth reduction based on distance from center
+                const distanceRatio = Math.abs(i) / valleyWidth;
+                const depthReduction = valleyDepth * Math.pow(distanceRatio, 2);
+                
+                // Apply valley depth
+                terrainHeights[pos] += Math.floor(valleyDepth - depthReduction);
+            }
+        }
     }
 }
 

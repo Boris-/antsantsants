@@ -161,30 +161,18 @@ setInterval(() => {
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-    console.log('New player connected:', socket.id);
+    console.log('New client connected:', socket.id);
     
     // Add player to game state
     gameState.players[socket.id] = {
         id: socket.id,
         x: 0,
         y: 0,
-        width: 20,
-        height: 30,
-        color: getRandomColor(),
-        direction: 1, // 1 for right, -1 for left
-        inventory: {
-            dirt: 0,
-            stone: 0,
-            grass: 0,
-            sand: 0,
-            coal: 0,
-            iron: 0,
-            gold: 0,
-            diamond: 0
-        }
+        direction: 'right',
+        inventory: {}
     };
     
-    // Send initial game state to new player
+    // Send initialization data to client
     socket.emit('initialize', {
         id: socket.id,
         players: gameState.players,
@@ -193,17 +181,18 @@ io.on('connection', (socket) => {
         biomeMap: gameState.biomeMap
     });
     
-    // Broadcast new player to all other players
+    // Broadcast new player to all other clients
     socket.broadcast.emit('playerJoined', gameState.players[socket.id]);
     
     // Handle player movement
     socket.on('playerMove', (data) => {
+        // Update player position
         if (gameState.players[socket.id]) {
             gameState.players[socket.id].x = data.x;
             gameState.players[socket.id].y = data.y;
             gameState.players[socket.id].direction = data.direction;
             
-            // Broadcast player movement to all other players
+            // Broadcast player movement to all other clients
             socket.broadcast.emit('playerMoved', {
                 id: socket.id,
                 x: data.x,
@@ -211,6 +200,44 @@ io.on('connection', (socket) => {
                 direction: data.direction
             });
         }
+    });
+    
+    // Handle world seed reset request
+    socket.on('resetWorldSeed', (data) => {
+        console.log('Received request to reset world seed');
+        
+        // Generate a new seed or use the provided one
+        if (data && data.seed !== undefined) {
+            gameState.worldSeed = Number(data.seed);
+        } else {
+            gameState.worldSeed = Math.floor(Math.random() * 1000000);
+        }
+        
+        console.log('New world seed:', gameState.worldSeed);
+        
+        // Clear existing chunks
+        gameState.chunks = {};
+        
+        // Reinitialize biomes
+        worldGeneration.initializeBiomes(gameState);
+        
+        // Generate new biome map
+        gameState.biomeMap = worldGeneration.generateBiomeMap(gameState);
+        
+        // Generate new terrain heights
+        worldGeneration.generateTerrainHeights(gameState);
+        
+        // Save the new world
+        saveWorld();
+        
+        // Broadcast world reset to all clients
+        io.emit('worldReset', {
+            worldSeed: gameState.worldSeed,
+            terrainHeights: gameState.terrainHeights,
+            biomeMap: gameState.biomeMap
+        });
+        
+        console.log('World reset complete');
     });
     
     // Handle inventory updates
