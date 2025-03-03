@@ -29,7 +29,11 @@ const TILE_TYPES = {
     CACTUS: 16,   // Desert cactus
     SNOW: 17,     // Snow block
     MUSHROOM: 18, // Forest mushroom
-    WATER: 19     // Water block
+    WATER: 19,    // Water block
+    ANT_TUNNEL: 20, // Ant tunnel - specialized path for ants
+    ROOT: 21,     // Plant root - food source for ants
+    CLAY: 22,     // Clay soil - good for building ant chambers
+    FUNGI: 23     // Underground fungi - food source for ants
 };
 
 // Biome types
@@ -37,7 +41,9 @@ const BIOME_TYPES = {
     PLAINS: 'Plains',
     FOREST: 'Forest',
     DESERT: 'Desert',
-    MOUNTAINS: 'Mountains'
+    MOUNTAINS: 'Mountains',
+    GRASSLAND: 'Grassland',  // New biome for ants
+    WETLAND: 'Wetland'       // New biome for ants
 };
 
 // Deterministic random number generator
@@ -61,6 +67,8 @@ function initializeBiomes(gameState) {
             noiseThreshold: 0.3,
             heightModifier: 0,
             mapColor: '#7CFC00', // Light green
+            soilDensity: 0.9,    // High soil density, fewer caves
+            antFriendliness: 0.7, // Good for ants
             features: {
                 trees: {
                     frequency: 0.05,
@@ -79,6 +87,9 @@ function initializeBiomes(gameState) {
                 },
                 tallGrass: {
                     frequency: 0.3
+                },
+                roots: {
+                    frequency: 0.2  // Plant roots for ants to eat
                 }
             }
         },
@@ -87,6 +98,8 @@ function initializeBiomes(gameState) {
             noiseThreshold: 0.6,
             heightModifier: 5,
             mapColor: '#228B22', // Forest green
+            soilDensity: 0.85,   // Dense soil with some caves
+            antFriendliness: 0.8, // Very good for ants
             features: {
                 trees: {
                     frequency: 0.3,
@@ -106,6 +119,12 @@ function initializeBiomes(gameState) {
                 },
                 mushrooms: {
                     frequency: 0.1
+                },
+                roots: {
+                    frequency: 0.3  // Lots of roots in forest
+                },
+                fungi: {
+                    frequency: 0.15 // Underground fungi in forest floor
                 }
             }
         },
@@ -114,9 +133,14 @@ function initializeBiomes(gameState) {
             noiseThreshold: 0.8,
             heightModifier: -5,
             mapColor: '#F0E68C', // Khaki
+            soilDensity: 0.95,   // Very dense soil, minimal caves
+            antFriendliness: 0.4, // Difficult for ants but possible
             features: {
                 cacti: {
                     frequency: 0.1
+                },
+                clay: {
+                    frequency: 0.2  // Underground clay deposits
                 }
             }
         },
@@ -125,6 +149,8 @@ function initializeBiomes(gameState) {
             noiseThreshold: 1.0,
             heightModifier: 20,
             mapColor: '#A0A0A0', // Gray
+            soilDensity: 0.7,    // Less dense soil, more caves and tunnels
+            antFriendliness: 0.5, // Moderate for ants
             features: {
                 trees: {
                     frequency: 0.1,
@@ -137,6 +163,56 @@ function initializeBiomes(gameState) {
                 },
                 snow: {
                     frequency: 0.3
+                },
+                stone: {
+                    frequency: 0.6  // More stone formations
+                }
+            }
+        },
+        [BIOME_TYPES.GRASSLAND]: {
+            name: 'Grassland',
+            noiseThreshold: 0.4,
+            heightModifier: 2,
+            mapColor: '#98FB98', // Pale green
+            soilDensity: 0.88,   // Good soil density for ant tunneling
+            antFriendliness: 0.9, // Excellent for ants
+            features: {
+                tallGrass: {
+                    frequency: 0.5
+                },
+                flowers: {
+                    frequency: 0.2
+                },
+                bushes: {
+                    frequency: 0.05
+                },
+                roots: {
+                    frequency: 0.25
+                },
+                fungi: {
+                    frequency: 0.1
+                }
+            }
+        },
+        [BIOME_TYPES.WETLAND]: {
+            name: 'Wetland',
+            noiseThreshold: 0.7,
+            heightModifier: -2,
+            mapColor: '#6B8E23', // Olive Drab
+            soilDensity: 0.8,    // Moist soil, good for tunneling
+            antFriendliness: 0.75, // Good for ants
+            features: {
+                water: {
+                    frequency: 0.2
+                },
+                tallGrass: {
+                    frequency: 0.4
+                },
+                mushrooms: {
+                    frequency: 0.15
+                },
+                fungi: {
+                    frequency: 0.2  // More fungi in wetlands
                 }
             }
         }
@@ -157,28 +233,38 @@ function generateBiomeMap(gameState) {
     // Use 1D noise for biome generation to create larger, more coherent biomes
     // We'll use multiple noise scales to create more natural transitions
     
-    // Biome size control - larger values = larger biomes
-    const biomeScale = 0.005; 
+    // Biome size control - MUCH larger values for larger biomes
+    const biomeScale = 0.0015; // Reduced from 0.005 for larger biomes
     
+    // Create a biome noise array
+    const biomeNoise = [];
     for (let x = 0; x < WORLD_WIDTH; x++) {
-        // Generate noise value using position and seed
-        // This creates a smooth gradient from 0-1 across the world
+        // Generate multiple noise layers at different frequencies for more organic patterns
         const noiseX1 = seededRandom(gameState.worldSeed + x * biomeScale);
         const noiseX2 = seededRandom(gameState.worldSeed + 10000 + x * biomeScale * 0.5);
+        const noiseX3 = seededRandom(gameState.worldSeed + 20000 + x * biomeScale * 0.2);
         
         // Combine noise values to create more interesting patterns
-        // This creates a value between 0-1 that changes smoothly across the world
-        const combinedNoise = (noiseX1 * 0.7 + noiseX2 * 0.3);
+        // This gives a more organic, Minecraft-like biome distribution
+        biomeNoise[x] = (noiseX1 * 0.6 + noiseX2 * 0.3 + noiseX3 * 0.1);
+    }
+    
+    // Assign biomes based on noise value
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+        const noise = biomeNoise[x];
         
         // Determine biome type based on noise value
-        // This creates distinct biome regions based on the noise value
         let biome;
-        if (combinedNoise < 0.25) {
-            biome = gameState.biomeTypes[BIOME_TYPES.PLAINS];
-        } else if (combinedNoise < 0.5) {
-            biome = gameState.biomeTypes[BIOME_TYPES.FOREST];
-        } else if (combinedNoise < 0.75) {
+        if (noise < 0.15) {
             biome = gameState.biomeTypes[BIOME_TYPES.DESERT];
+        } else if (noise < 0.35) {
+            biome = gameState.biomeTypes[BIOME_TYPES.PLAINS];
+        } else if (noise < 0.50) {
+            biome = gameState.biomeTypes[BIOME_TYPES.GRASSLAND];
+        } else if (noise < 0.70) {
+            biome = gameState.biomeTypes[BIOME_TYPES.FOREST];
+        } else if (noise < 0.85) {
+            biome = gameState.biomeTypes[BIOME_TYPES.WETLAND];
         } else {
             biome = gameState.biomeTypes[BIOME_TYPES.MOUNTAINS];
         }
@@ -197,7 +283,7 @@ function smoothBiomeMap(biomeMap, gameState) {
     const smoothedMap = [...biomeMap];
     
     // Use a larger smoothing window for more gradual transitions
-    const smoothingRadius = 10;
+    const smoothingRadius = 30; // Increased from 10 for wider transition zones
     
     // First pass: identify transition points
     const transitionPoints = [];
@@ -224,14 +310,15 @@ function smoothBiomeMap(biomeMap, gameState) {
             const distanceRatio = Math.abs(i) / smoothingRadius;
             const transitionRand = getRandomForPosition(gameState.worldSeed, x, 0);
             
+            // Create more natural, gradual transitions
             if (i < 0) {
                 // Left side of transition
-                if (transitionRand > distanceRatio * 0.8) {
+                if (transitionRand > Math.pow(distanceRatio, 1.5) * 0.9) {
                     smoothedMap[x] = leftBiome;
                 }
             } else {
                 // Right side of transition
-                if (transitionRand > distanceRatio * 0.8) {
+                if (transitionRand > Math.pow(distanceRatio, 1.5) * 0.9) {
                     smoothedMap[x] = rightBiome;
                 }
             }
@@ -244,7 +331,7 @@ function smoothBiomeMap(biomeMap, gameState) {
     }
     
     // Final pass: remove tiny biome segments (less than minBiomeSize)
-    const minBiomeSize = 30;
+    const minBiomeSize = 60; // Increased from 30 for larger minimum biome size
     let currentBiome = biomeMap[0];
     let currentSize = 1;
     let startIndex = 0;
@@ -284,32 +371,22 @@ function generateTerrainHeights(gameState) {
     
     const terrainHeights = [];
     
+    // Initialize Perlin noise generator if not already created
+    if (!gameState.perlinNoise) {
+        gameState.perlinNoise = new PerlinNoise(gameState.worldSeed);
+    }
+    
     // Base terrain height (middle of the world)
     const baseHeight = Math.floor(WORLD_HEIGHT * 0.5);
     
-    // Generate initial terrain using multiple noise frequencies
-    // This creates a more natural-looking terrain
+    // Generate initial terrain using improved noise functions
     for (let x = 0; x < WORLD_WIDTH; x++) {
         // Get biome at this position
         const biome = gameState.biomeMap[x];
         
-        // Generate multiple noise values at different frequencies
-        // Large-scale terrain features (mountains, valleys)
-        const largeScale = seededRandom(gameState.worldSeed + x * 0.001) * 2 - 1;
-        
-        // Medium-scale terrain features (hills, depressions)
-        const mediumScale = seededRandom(gameState.worldSeed + 10000 + x * 0.01) * 2 - 1;
-        
-        // Small-scale terrain features (bumps, small variations)
-        const smallScale = seededRandom(gameState.worldSeed + 20000 + x * 0.05) * 2 - 1;
-        
-        // Combine noise values with different weights
-        // Large-scale has most influence, small-scale has least
-        const combinedNoise = (
-            largeScale * 0.6 + 
-            mediumScale * 0.3 + 
-            smallScale * 0.1
-        );
+        // Use the improved Perlin noise for more organic terrain
+        // This generates Minecraft-like terrain with varying features
+        const noiseValue = gameState.perlinNoise.terrainNoise(x, 0);
         
         // Apply biome-specific height modifiers
         let heightModifier = 0;
@@ -328,24 +405,28 @@ function generateTerrainHeights(gameState) {
                 biomeAmplitude = 0.7; // Mostly flat with some dunes
             } else if (biome.name === BIOME_TYPES.MOUNTAINS) {
                 biomeAmplitude = 2.0; // Very mountainous
+            } else if (biome.name === BIOME_TYPES.GRASSLAND) {
+                biomeAmplitude = 0.6; // Gently rolling hills
+            } else if (biome.name === BIOME_TYPES.WETLAND) {
+                biomeAmplitude = 0.4; // Very flat with occasional low hills
             }
             
             // Calculate final height with biome-specific amplitude
             const height = Math.floor(
                 baseHeight + 
-                (combinedNoise * 30 * biomeAmplitude) + 
+                (noiseValue * 40 * biomeAmplitude) + // Increased from 30 for more dramatic terrain
                 heightModifier
             );
             
             terrainHeights[x] = height;
         } else {
             // Fallback if no biome is defined
-            terrainHeights[x] = baseHeight + Math.floor(combinedNoise * 20);
+            terrainHeights[x] = baseHeight + Math.floor(noiseValue * 25);
         }
     }
     
     // Apply multiple smoothing passes for more natural terrain
-    smoothTerrain(terrainHeights, 3);
+    smoothTerrain(terrainHeights, 2); // Reduced from 3 passes to preserve more terrain features
     
     // Add terrain features like mountains and valleys
     addTerrainFeatures(terrainHeights, gameState);
@@ -466,13 +547,17 @@ function generateChunk(chunkX, chunkY, gameState) {
             // If terrain heights are generated
             if (gameState.terrainHeights && gameState.terrainHeights.length > 0) {
                 const terrainHeight = gameState.terrainHeights[worldX] || 0;
+                const biome = getBiomeAt(worldX, gameState);
+                
+                // Get soil density from biome (used to determine underground structure)
+                const soilDensity = biome ? biome.soilDensity || 0.85 : 0.85;
                 
                 if (worldY > terrainHeight + 20) {
                     // Deep underground - more chance of stone and ore
                     const rand = getRandomForPosition(gameState.worldSeed, worldX, worldY);
                     if (rand < 0.7) {
                         tileType = TILE_TYPES.STONE;
-                    } else if (rand < 0.85) {
+                    } else if (rand < 0.9) { // Increased dirt from 0.85 to 0.9
                         tileType = TILE_TYPES.DIRT;
                     } else {
                         // Generate different types of ore based on depth
@@ -481,18 +566,55 @@ function generateChunk(chunkX, chunkY, gameState) {
                 } else if (worldY > terrainHeight) {
                     // Underground - mostly dirt with some stone
                     const rand = getRandomForPosition(gameState.worldSeed, worldX, worldY);
-                    if (rand < 0.8) {
+                    if (rand < 0.85) { // Increased from 0.8
                         tileType = TILE_TYPES.DIRT;
                     } else {
                         tileType = TILE_TYPES.STONE;
                     }
+                    
+                    // Add clay in certain biomes
+                    if (biome && (biome.name === BIOME_TYPES.WETLAND || biome.name === BIOME_TYPES.DESERT)) {
+                        const clayRand = getRandomForPosition(gameState.worldSeed + 500, worldX, worldY);
+                        if (clayRand < 0.15) {
+                            tileType = TILE_TYPES.CLAY;
+                        }
+                    }
+                    
+                    // Add fungi in wet/forest biomes
+                    if (biome && (biome.name === BIOME_TYPES.WETLAND || biome.name === BIOME_TYPES.FOREST)) {
+                        const fungiRand = getRandomForPosition(gameState.worldSeed + 600, worldX, worldY);
+                        if (fungiRand < 0.07) {
+                            tileType = TILE_TYPES.FUNGI;
+                        }
+                    }
+                    
+                    // Add roots near surface in vegetated areas
+                    if (biome && (biome.name === BIOME_TYPES.FOREST || biome.name === BIOME_TYPES.PLAINS || 
+                                biome.name === BIOME_TYPES.GRASSLAND) && 
+                        worldY < terrainHeight + 10) { // Only near surface
+                        const rootRand = getRandomForPosition(gameState.worldSeed + 700, worldX, worldY);
+                        if (rootRand < 0.08) {
+                            tileType = TILE_TYPES.ROOT;
+                        }
+                    }
                 } else if (worldY === terrainHeight) {
                     // Surface - grass or biome-specific block
-                    const biome = getBiomeAt(worldX, gameState);
-                    if (biome && biome.name === BIOME_TYPES.DESERT) {
-                        tileType = TILE_TYPES.SAND;
-                    } else if (biome && biome.name === BIOME_TYPES.MOUNTAINS && worldY < terrainHeight - 10) {
-                        tileType = TILE_TYPES.SNOW;
+                    if (biome) {
+                        if (biome.name === BIOME_TYPES.DESERT) {
+                            tileType = TILE_TYPES.SAND;
+                        } else if (biome.name === BIOME_TYPES.MOUNTAINS && worldY < terrainHeight - 10) {
+                            tileType = TILE_TYPES.SNOW;
+                        } else if (biome.name === BIOME_TYPES.WETLAND) {
+                            // Chance for water patches in wetland
+                            const waterRand = getRandomForPosition(gameState.worldSeed + 800, worldX, worldY);
+                            if (waterRand < 0.2) {
+                                tileType = TILE_TYPES.WATER;
+                            } else {
+                                tileType = TILE_TYPES.GRASS;
+                            }
+                        } else {
+                            tileType = TILE_TYPES.GRASS;
+                        }
                     } else {
                         tileType = TILE_TYPES.GRASS;
                     }
@@ -506,11 +628,53 @@ function generateChunk(chunkX, chunkY, gameState) {
                     tileType = TILE_TYPES.BEDROCK;
                 }
                 
-                // Add caves
+                // Add caves and ant tunnels
                 if (tileType !== TILE_TYPES.AIR && tileType !== TILE_TYPES.BEDROCK) {
+                    // Get biome ant-friendliness factor - affects tunnel generation
+                    const antFactor = biome ? biome.antFriendliness || 0.5 : 0.5;
+                    
+                    // Generate cave noise
                     const caveNoise = generateCaveNoise(worldX, worldY, gameState.worldSeed);
-                    if (caveNoise > 0.7 && worldY > terrainHeight + 5) {
+                    
+                    // Ant tunnels are more common in ant-friendly biomes and mostly horizontal
+                    // They're smaller than regular caves
+                    const isAntTunnel = caveNoise > 0.4 && caveNoise < 0.45 && 
+                                       antFactor > 0.6 && 
+                                       worldY > terrainHeight + 3 && worldY < terrainHeight + 50;
+                    
+                    // Regular caves - threshold adjusted by soil density
+                    // Higher soil density = higher threshold = fewer caves
+                    const caveThreshold = 0.55 + (soilDensity * 0.2);
+                    
+                    if (caveNoise > caveThreshold && worldY > terrainHeight + 5) {
                         tileType = TILE_TYPES.AIR;
+                    } else if (isAntTunnel) {
+                        // Create ant tunnels - specialized paths for ants
+                        tileType = TILE_TYPES.ANT_TUNNEL;
+                        
+                        // Occasional ant chambers at tunnel junctions
+                        const chamberRand = getRandomForPosition(gameState.worldSeed + 950, worldX, worldY);
+                        if (chamberRand < 0.1) {
+                            // Make surrounding blocks also ant tunnels to create a chamber
+                            for (let cy = -1; cy <= 1; cy++) {
+                                for (let cx = -1; cx <= 1; cx++) {
+                                    if (cy === 0 && cx === 0) continue; // Skip center
+                                    
+                                    // Mark this location for chamber expansion
+                                    // Will be processed in a post-generation pass
+                                    if (!gameState.antChambers) {
+                                        gameState.antChambers = [];
+                                    }
+                                    
+                                    gameState.antChambers.push({
+                                        x: worldX + cx,
+                                        y: worldY + cy,
+                                        chunkX: chunkX,
+                                        chunkY: chunkY
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -777,15 +941,42 @@ function generateTreeWithSeed(chunk, localX, localY, worldX, worldY, biome, worl
 
 // Generate cave noise with deterministic randomness
 function generateCaveNoise(x, y, seed) {
-    // Use a simple but deterministic noise function
-    const noiseX = seededRandom(seed + x * 0.1);
-    const noiseY = seededRandom(seed + y * 0.1);
-    const noise = seededRandom(seed + noiseX * 10000 + noiseY * 1000);
+    // Use our improved PerlinNoise implementation
+    // This creates larger, more connected cave systems like Minecraft
+
+    // Create static perlin noise instance
+    if (!generateCaveNoise.perlinNoise) {
+        generateCaveNoise.perlinNoise = new PerlinNoise(seed);
+    }
     
-    // Add some variation based on position
-    const variation = (Math.sin(x * 0.1) + Math.cos(y * 0.1)) * 0.1;
+    // Determine if this should be an ant tunnel or regular cave
+    const tunnelRand = getRandomForPosition(seed, x, y + 5000);
     
-    return noise + variation;
+    if (tunnelRand < 0.3) { // 30% chance for ant tunnel patterns
+        // Use specialized ant tunnel noise function
+        // This creates more horizontal, interconnected tunnels ideal for ants
+        return generateCaveNoise.perlinNoise.antTunnelNoise(x, y, seed);
+    } else {
+        // Regular cave noise - creates larger, more Minecraft-like caves
+        // Scale factor - smaller values = larger caves
+        const caveScale = 0.05;
+        
+        // Get coordinates at different scales
+        const nx1 = x * caveScale;
+        const ny1 = y * caveScale;
+        const nx2 = x * caveScale * 2;
+        const ny2 = y * caveScale * 2;
+        
+        // Generate multiple layers of noise for more natural cave systems
+        const noise1 = generateCaveNoise.perlinNoise.noise(nx1, ny1);
+        const noise2 = generateCaveNoise.perlinNoise.noise(nx2, ny2) * 0.5;
+        
+        // Combine noise layers with worm-like tunnels
+        const combinedNoise = (noise1 + noise2) * 0.75;
+        const wormFactor = Math.sin(x * 0.02 + y * 0.03 + seed * 0.1) * 0.1;
+        
+        return combinedNoise + wormFactor;
+    }
 }
 
 // Get biome at a specific x coordinate
@@ -862,6 +1053,143 @@ class PerlinNoise {
             v
         );
     }
+    
+    // Generate fractal/octave noise for more complex terrain
+    // Combines multiple layers of noise at different frequencies and amplitudes
+    octaveNoise(x, y, octaves = 4, persistence = 0.5, lacunarity = 2.0) {
+        let total = 0;
+        let frequency = 1;
+        let amplitude = 1;
+        let maxValue = 0;
+        
+        for (let i = 0; i < octaves; i++) {
+            total += this.noise(x * frequency, y * frequency) * amplitude;
+            maxValue += amplitude;
+            amplitude *= persistence;
+            frequency *= lacunarity;
+        }
+        
+        // Normalize result to range [-1, 1]
+        return (total / maxValue) * 2 - 1;
+    }
+    
+    // Generate terrain noise that's more suitable for Minecraft-like terrain
+    terrainNoise(x, y, large = 1.0, medium = 0.5, small = 0.25, tiny = 0.1) {
+        // Large-scale terrain features (continent/biome level)
+        const largeScale = this.octaveNoise(x * 0.001, y * 0.001, 2, 0.5, 2.0) * large;
+        
+        // Medium-scale terrain features (hills/valleys)
+        const mediumScale = this.octaveNoise(x * 0.01, y * 0.01, 4, 0.5, 2.0) * medium;
+        
+        // Small-scale terrain features (small hills/depressions)
+        const smallScale = this.octaveNoise(x * 0.05, y * 0.05, 2, 0.5, 2.0) * small;
+        
+        // Tiny-scale terrain features (roughness/texture)
+        const tinyScale = this.octaveNoise(x * 0.1, y * 0.1, 1, 0.5, 2.0) * tiny;
+        
+        // Combine all scales with different weights
+        return largeScale + mediumScale + smallScale + tinyScale;
+    }
+    
+    // Special cave pattern generation for ant-friendly tunnels
+    // Creates more horizontal, connected tunnels than random caves
+    antTunnelNoise(x, y, seed) {
+        // More horizontal bias
+        const hBias = 0.7;
+        const yFactor = y * (1 - hBias) + (seed % 1000) * hBias;
+        
+        // Generate primary tunnel network
+        const mainTunnel = this.octaveNoise(x * 0.03, yFactor * 0.03, 2, 0.5, 2.0);
+        
+        // Generate secondary connecting tunnels
+        const secondaryTunnel = this.octaveNoise(x * 0.06, yFactor * 0.06, 1, 0.5, 2.0) * 0.3;
+        
+        // Add some occasional vertical shafts
+        const verticalShaft = Math.sin(x * 0.1 + seed) * Math.cos(y * 0.1) * 0.2;
+        
+        // Add chamber patterns at periodic intervals
+        const chamberPattern = 
+            (Math.sin(x * 0.02 + seed) > 0.7 && Math.cos(y * 0.02 + seed) > 0.7) ? 0.3 : 0;
+        
+        return mainTunnel + secondaryTunnel + verticalShaft + chamberPattern;
+    }
+}
+
+// Process ant chambers after all chunks are generated
+function processAntChambers(gameState) {
+    if (!gameState.antChambers || gameState.antChambers.length === 0) {
+        return;
+    }
+    
+    console.log(`Processing ${gameState.antChambers.length} ant chambers`);
+    
+    // Create a map to group chambers by chunk
+    const chambersByChunk = {};
+    
+    // Group chambers by chunk coordinates
+    for (const chamber of gameState.antChambers) {
+        const key = `${chamber.chunkX},${chamber.chunkY}`;
+        if (!chambersByChunk[key]) {
+            chambersByChunk[key] = [];
+        }
+        chambersByChunk[key].push(chamber);
+    }
+    
+    // Process each chunk's chambers
+    for (const key in chambersByChunk) {
+        const [chunkX, chunkY] = key.split(',').map(Number);
+        const chambers = chambersByChunk[key];
+        
+        // Get the chunk
+        const chunk = gameState.chunks[key];
+        if (!chunk) continue;
+        
+        // Process each chamber
+        for (const chamber of chambers) {
+            // Calculate the local coordinates in the chunk
+            const localX = chamber.x % CHUNK_SIZE;
+            const localY = chamber.y % CHUNK_SIZE;
+            
+            // Create a chamber of random size (2-4 blocks)
+            const chamberSize = 1 + Math.floor(getRandomForPosition(gameState.worldSeed, chamber.x, chamber.y) * 3);
+            
+            // Create the chamber by expanding in all directions
+            for (let cy = -chamberSize; cy <= chamberSize; cy++) {
+                for (let cx = -chamberSize; cx <= chamberSize; cx++) {
+                    // Skip if outside chunk boundaries
+                    const newLocalX = localX + cx;
+                    const newLocalY = localY + cy;
+                    if (newLocalX < 0 || newLocalX >= CHUNK_SIZE || newLocalY < 0 || newLocalY >= CHUNK_SIZE) {
+                        continue;
+                    }
+                    
+                    // Calculate distance from center
+                    const distance = Math.sqrt(cx*cx + cy*cy);
+                    
+                    // Create oval-shaped chamber (more horizontal than vertical)
+                    if (distance <= chamberSize * (Math.abs(cy) > Math.abs(cx) ? 0.7 : 1.0)) {
+                        chunk[newLocalY][newLocalX] = TILE_TYPES.ANT_TUNNEL;
+                        
+                        // Occasionally add food sources or special materials in chambers
+                        const specialRand = getRandomForPosition(gameState.worldSeed, chamber.x + cx, chamber.y + cy);
+                        if (specialRand < 0.1) {
+                            // Add food or materials
+                            if (specialRand < 0.03) {
+                                chunk[newLocalY][newLocalX] = TILE_TYPES.FUNGI;
+                            } else if (specialRand < 0.06) {
+                                chunk[newLocalY][newLocalX] = TILE_TYPES.ROOT;
+                            } else {
+                                chunk[newLocalY][newLocalX] = TILE_TYPES.CLAY;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Clear processed chambers
+    gameState.antChambers = [];
 }
 
 // Export functions for use in server.js
@@ -870,6 +1198,7 @@ module.exports = {
     generateBiomeMap,
     generateTerrainHeights,
     generateChunk,
+    processAntChambers,
     TILE_TYPES,
     BIOME_TYPES
 }; 
