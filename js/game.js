@@ -110,9 +110,28 @@ function updateCamera() {
 
 // Update UI elements
 function updateUI() {
-    document.getElementById('health').textContent = `Health: ${gameState.player.health}`;
-    updateScoreDisplay();
-    updateInventoryDisplay();
+    // Make sure gameState exists
+    if (!window.gameState) {
+        console.error("Game state not initialized in updateUI!");
+        return;
+    }
+    
+    // Call the specific UI update functions directly to avoid circular references
+    if (typeof window.updateHealthDisplay === 'function') {
+        window.updateHealthDisplay();
+    }
+    if (typeof window.updateScoreDisplay === 'function') {
+        window.updateScoreDisplay();
+    }
+    if (typeof window.updateInventoryDisplay === 'function') {
+        window.updateInventoryDisplay();
+    }
+    if (typeof window.updateBiomeDisplay === 'function') {
+        window.updateBiomeDisplay();
+    }
+    if (typeof window.updateDebugInfo === 'function') {
+        window.updateDebugInfo();
+    }
 }
 
 // Check if we should auto-save
@@ -148,7 +167,7 @@ function addSaveButton() {
 
 // Initialize game when window loads
 window.addEventListener('load', () => {
-    initializeGame();
+    initializeGameState();
     addSaveButton();
     gameLoop(0);
     
@@ -778,104 +797,8 @@ function drawAnt() {
 
 // Draw UI
 function drawUI() {
-    // Draw health bar
-    gameState.ctx.fillStyle = "#333333";
-    gameState.ctx.fillRect(10, 10, 200, 20);
-    
-    gameState.ctx.fillStyle = "#FF0000";
-    const healthWidth = (gameState.player.health / gameState.player.maxHealth) * 196;
-    gameState.ctx.fillRect(12, 12, healthWidth, 16);
-    
-    gameState.ctx.fillStyle = "#FFFFFF";
-    gameState.ctx.font = "12px Arial";
-    gameState.ctx.fillText(`Health: ${gameState.player.health}/${gameState.player.maxHealth}`, 15, 25);
-    
-    // Draw score
-    gameState.ctx.fillStyle = "#FFFFFF";
-    gameState.ctx.font = "16px Arial";
-    gameState.ctx.fillText(`Score: ${gameState.score}`, 10, 50);
-    
-    // Draw inventory
-    let inventoryY = 70;
-    gameState.ctx.fillStyle = "#FFFFFF";
-    gameState.ctx.font = "14px Arial";
-    gameState.ctx.fillText("Inventory:", 10, inventoryY);
-    
-    inventoryY += 20;
-    let hasItems = false;
-    
-    for (const tileType in gameState.inventory) {
-        if (gameState.inventory[tileType] > 0) {
-            hasItems = true;
-            
-            // Draw item background
-            gameState.ctx.fillStyle = "#333333";
-            gameState.ctx.fillRect(10, inventoryY, 40, 40);
-            
-            // Draw item
-            gameState.ctx.fillStyle = getTileColor(parseInt(tileType));
-            gameState.ctx.fillRect(15, inventoryY + 5, 30, 30);
-            
-            // Draw item count
-            gameState.ctx.fillStyle = "#FFFFFF";
-            gameState.ctx.font = "12px Arial";
-            gameState.ctx.fillText(gameState.inventory[tileType], 40, inventoryY + 35);
-            
-            // Draw item name
-            gameState.ctx.fillText(getTileName(parseInt(tileType)), 60, inventoryY + 25);
-            
-            inventoryY += 50;
-        }
-    }
-    
-    if (!hasItems) {
-        gameState.ctx.fillStyle = "#FFFFFF";
-        gameState.ctx.font = "12px Arial";
-        gameState.ctx.fillText("Empty", 15, inventoryY + 15);
-    }
-    
-    // Draw current biome
-    if (gameState.biomeMap) {
-        const playerBiomeX = Math.floor(gameState.player.x / TILE_SIZE);
-        const biomeType = getBiomeAt(playerBiomeX);
-        
-        let biomeName = "Unknown";
-        switch (biomeType) {
-            case BIOME_TYPES.PLAINS: biomeName = "Plains"; break;
-            case BIOME_TYPES.FOREST: biomeName = "Forest"; break;
-            case BIOME_TYPES.DESERT: biomeName = "Desert"; break;
-            case BIOME_TYPES.MOUNTAINS: biomeName = "Mountains"; break;
-        }
-        
-        // Create or update biome indicator
-        let biomeIndicator = document.querySelector('.biome-indicator');
-        if (!biomeIndicator) {
-            biomeIndicator = document.createElement('div');
-            biomeIndicator.className = 'biome-indicator';
-            document.body.appendChild(biomeIndicator);
-        }
-        
-        biomeIndicator.textContent = `Biome: ${biomeName}`;
-    }
-    
-    // Draw debug info if enabled
-    if (gameState.debug) {
-        const playerX = Math.floor(gameState.player.x / TILE_SIZE);
-        const playerY = Math.floor(gameState.player.y / TILE_SIZE);
-        
-        let debugInfo = document.querySelector('.debug-info');
-        if (!debugInfo) {
-            debugInfo = document.createElement('div');
-            debugInfo.className = 'debug-info';
-            document.body.appendChild(debugInfo);
-        }
-        
-        debugInfo.innerHTML = `
-            Position: (${playerX}, ${playerY})<br>
-            FPS: ${Math.round(gameState.fps || 0)}<br>
-            Chunks: ${Object.keys(gameState.chunks).length}
-        `;
-    }
+    // UI is now handled by DOM elements in ui.js
+    // This function is kept for compatibility but doesn't need to draw anything
 }
 
 // Get biome at x coordinate

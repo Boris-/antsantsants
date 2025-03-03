@@ -285,57 +285,18 @@ function loadGame() {
 
 // Update inventory display
 function updateInventoryDisplay() {
-    document.getElementById('dirt-count').textContent = `Dirt: ${gameState.player.inventory.dirt}`;
-    document.getElementById('stone-count').textContent = `Stone: ${gameState.player.inventory.stone}`;
-    document.getElementById('ore-count').textContent = `Ore: ${gameState.player.inventory.ore}`;
-    
-    // Add new ore types to UI if they exist
-    const inventory = document.getElementById('inventory');
-    
-    // Check if coal count element exists, if not create it
-    if (!document.getElementById('coal-count')) {
-        const coalCount = document.createElement('span');
-        coalCount.id = 'coal-count';
-        coalCount.textContent = `Coal: ${gameState.player.inventory.coal || 0}`;
-        inventory.appendChild(coalCount);
-    } else {
-        document.getElementById('coal-count').textContent = `Coal: ${gameState.player.inventory.coal || 0}`;
-    }
-    
-    // Check if iron count element exists, if not create it
-    if (!document.getElementById('iron-count')) {
-        const ironCount = document.createElement('span');
-        ironCount.id = 'iron-count';
-        ironCount.textContent = `Iron: ${gameState.player.inventory.iron || 0}`;
-        inventory.appendChild(ironCount);
-    } else {
-        document.getElementById('iron-count').textContent = `Iron: ${gameState.player.inventory.iron || 0}`;
-    }
-    
-    // Check if gold count element exists, if not create it
-    if (!document.getElementById('gold-count')) {
-        const goldCount = document.createElement('span');
-        goldCount.id = 'gold-count';
-        goldCount.textContent = `Gold: ${gameState.player.inventory.gold || 0}`;
-        inventory.appendChild(goldCount);
-    } else {
-        document.getElementById('gold-count').textContent = `Gold: ${gameState.player.inventory.gold || 0}`;
-    }
-    
-    // Check if diamond count element exists, if not create it
-    if (!document.getElementById('diamond-count')) {
-        const diamondCount = document.createElement('span');
-        diamondCount.id = 'diamond-count';
-        diamondCount.textContent = `Diamond: ${gameState.player.inventory.diamond || 0}`;
-        inventory.appendChild(diamondCount);
-    } else {
-        document.getElementById('diamond-count').textContent = `Diamond: ${gameState.player.inventory.diamond || 0}`;
+    // Call the centralized UI update function from ui.js
+    if (typeof window.updateInventoryDisplay === 'function') {
+        window.updateInventoryDisplay();
     }
 }
 
 // Update score display
 function updateScoreDisplay() {
-    document.getElementById('score').textContent = `Score: ${gameState.score}`;
+    // Call the centralized UI update function from ui.js
+    if (typeof window.updateScoreDisplay === 'function') {
+        window.updateScoreDisplay();
+    }
 }
 
 // Set up event listeners

@@ -5,6 +5,14 @@ window.addEventListener('load', () => {
     // Initialize the game state
     initializeGameState();
     
+    // Initialize UI after game state is initialized
+    if (typeof window.initializeUI === 'function') {
+        window.initializeUI();
+        console.log('UI initialized from main.js');
+    } else {
+        console.error('UI initialization function not found!');
+    }
+    
     // Initialize multiplayer connection
     initializeMultiplayer();
     
@@ -75,8 +83,16 @@ function renderGame() {
     // Draw enemies
     drawEnemies();
     
-    // Draw UI
-    drawUI();
+    // Update UI
+    if (typeof window.updateHealthDisplay === 'function' &&
+        typeof window.updateScoreDisplay === 'function' &&
+        typeof window.updateInventoryDisplay === 'function' &&
+        typeof window.updateBiomeDisplay === 'function') {
+        window.updateHealthDisplay();
+        window.updateScoreDisplay();
+        window.updateInventoryDisplay();
+        window.updateBiomeDisplay();
+    }
 }
 
 // Expose renderGame to the window object

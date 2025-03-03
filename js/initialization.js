@@ -1,5 +1,7 @@
 // Initialize game state
 function initializeGameState() {
+    console.log("Initializing game state...");
+    
     // Create canvas
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -8,8 +10,8 @@ function initializeGameState() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     
-    // Initialize game state object
-    gameState = {
+    // Initialize game state object as a global variable
+    window.gameState = {
         canvas: canvas,
         ctx: ctx,
         chunks: {},
@@ -27,7 +29,16 @@ function initializeGameState() {
             maxHealth: 100,
             direction: 1, // 1 for right, -1 for left
             invulnerable: false,
-            flash: false
+            flash: false,
+            inventory: {
+                dirt: 0,
+                stone: 0,
+                ore: 0,
+                coal: 0,
+                iron: 0,
+                gold: 0,
+                diamond: 0
+            }
         },
         camera: {
             x: 0,
@@ -67,6 +78,8 @@ function initializeGameState() {
         isMultiplayer: true
     };
     
+    console.log("Game state initialized with player inventory:", JSON.stringify(window.gameState.player.inventory));
+    
     // Initialize world
     initializeWorld();
     
@@ -76,19 +89,24 @@ function initializeGameState() {
     // Set up event listeners
     setupEventListeners();
     
+    // Initialize UI
+    initializeUI();
+    
     // Start game loop
     gameLoop();
+    
+    console.log("Game state initialization complete");
 }
 
 // Initialize world
 function initializeWorld() {
     // In multiplayer mode, world generation happens on the server
-    if (!gameState.isMultiplayer) {
+    if (!window.gameState.isMultiplayer) {
         // Initialize biomes first - this will store biomeTypes in gameState
         const biomeTypes = initializeBiomes();
         
         // Generate biome map using the initialized biome types
-        gameState.biomeMap = generateBiomeMap();
+        window.gameState.biomeMap = generateBiomeMap();
         
         // Generate terrain heights for the entire world (now that biomes are available)
         generateTerrainHeights();
@@ -101,11 +119,11 @@ function initializeWorld() {
 // Generate initial chunks around player
 function generateInitialChunks() {
     // In multiplayer mode, chunks are requested from the server
-    if (gameState.isMultiplayer) return;
+    if (window.gameState.isMultiplayer) return;
     
     // Calculate player chunk
-    const playerChunkX = Math.floor(gameState.player.x / (CHUNK_SIZE * TILE_SIZE));
-    const playerChunkY = Math.floor(gameState.player.y / (CHUNK_SIZE * TILE_SIZE));
+    const playerChunkX = Math.floor(window.gameState.player.x / (CHUNK_SIZE * TILE_SIZE));
+    const playerChunkY = Math.floor(window.gameState.player.y / (CHUNK_SIZE * TILE_SIZE));
     
     // Generate chunks in a 5x5 area around player
     for (let y = playerChunkY - 2; y <= playerChunkY + 2; y++) {
@@ -129,8 +147,8 @@ function spawnPlayer() {
     const terrainHeight = getTerrainHeight(spawnX);
     
     // Set player position
-    gameState.player.x = spawnX * TILE_SIZE;
-    gameState.player.y = (terrainHeight - 2) * TILE_SIZE; // Place player 2 blocks above terrain
+    window.gameState.player.x = spawnX * TILE_SIZE;
+    window.gameState.player.y = (terrainHeight - 2) * TILE_SIZE; // Place player 2 blocks above terrain
     
     // Center camera on player
     updateCamera();
@@ -140,28 +158,28 @@ function spawnPlayer() {
 function setupEventListeners() {
     // Keyboard events
     window.addEventListener('keydown', (e) => {
-        gameState.keys[e.key] = true;
+        window.gameState.keys[e.key] = true;
         
         // Toggle debug options
         if (e.key === 'f') {
-            gameState.debug.showFPS = !gameState.debug.showFPS;
+            window.gameState.debug.showFPS = !window.gameState.debug.showFPS;
         }
         if (e.key === 'c') {
-            gameState.debug.showChunkBorders = !gameState.debug.showChunkBorders;
+            window.gameState.debug.showChunkBorders = !window.gameState.debug.showChunkBorders;
         }
         if (e.key === 'g') {
-            gameState.debug.godMode = !gameState.debug.godMode;
-            if (gameState.debug.godMode) {
-                gameState.player.health = gameState.player.maxHealth;
+            window.gameState.debug.godMode = !window.gameState.debug.godMode;
+            if (window.gameState.debug.godMode) {
+                window.gameState.player.health = window.gameState.player.maxHealth;
             }
         }
         
         // Zoom controls
         if (e.key === '=' || e.key === '+') {
-            gameState.zoom = Math.min(2, gameState.zoom + 0.1);
+            window.gameState.zoom = Math.min(2, window.gameState.zoom + 0.1);
         }
         if (e.key === '-' || e.key === '_') {
-            gameState.zoom = Math.max(0.5, gameState.zoom - 0.1);
+            window.gameState.zoom = Math.max(0.5, window.gameState.zoom - 0.1);
         }
         
         // Save/load game
@@ -176,40 +194,40 @@ function setupEventListeners() {
     });
     
     window.addEventListener('keyup', (e) => {
-        gameState.keys[e.key] = false;
+        window.gameState.keys[e.key] = false;
     });
     
     // Mouse events
-    gameState.canvas.addEventListener('mousemove', (e) => {
-        gameState.mouse.x = e.clientX;
-        gameState.mouse.y = e.clientY;
+    window.gameState.canvas.addEventListener('mousemove', (e) => {
+        window.gameState.mouse.x = e.clientX;
+        window.gameState.mouse.y = e.clientY;
     });
     
-    gameState.canvas.addEventListener('mousedown', (e) => {
+    window.gameState.canvas.addEventListener('mousedown', (e) => {
         if (e.button === 0) {
-            gameState.mouse.leftPressed = true;
+            window.gameState.mouse.leftPressed = true;
         }
     });
     
-    gameState.canvas.addEventListener('mouseup', (e) => {
+    window.gameState.canvas.addEventListener('mouseup', (e) => {
         if (e.button === 0) {
-            gameState.mouse.leftPressed = false;
+            window.gameState.mouse.leftPressed = false;
         }
     });
     
     // Window resize
     window.addEventListener('resize', () => {
-        gameState.canvas.width = window.innerWidth;
-        gameState.canvas.height = window.innerHeight;
+        window.gameState.canvas.width = window.innerWidth;
+        window.gameState.canvas.height = window.innerHeight;
     });
 }
 
 // Play a sound
 function playSound(soundName) {
-    if (gameState.sounds[soundName]) {
+    if (window.gameState.sounds[soundName]) {
         try {
             // Clone the audio to allow overlapping sounds
-            const sound = gameState.sounds[soundName].cloneNode();
+            const sound = window.gameState.sounds[soundName].cloneNode();
             sound.volume = 0.3;
             sound.play();
         } catch (error) {
@@ -289,14 +307,14 @@ function createParticles(x, y, tileType) {
             life: 30 + Math.random() * 30
         };
         
-        gameState.particles.push(particle);
+        window.gameState.particles.push(particle);
     }
 }
 
 // Update particles
 function updateParticles() {
-    for (let i = gameState.particles.length - 1; i >= 0; i--) {
-        const particle = gameState.particles[i];
+    for (let i = window.gameState.particles.length - 1; i >= 0; i--) {
+        const particle = window.gameState.particles[i];
         
         // Update position
         particle.x += particle.vx;
@@ -310,23 +328,23 @@ function updateParticles() {
         
         // Remove dead particles
         if (particle.life <= 0) {
-            gameState.particles.splice(i, 1);
+            window.gameState.particles.splice(i, 1);
         }
     }
 }
 
 // Draw particles
 function drawParticles() {
-    for (const particle of gameState.particles) {
+    for (const particle of window.gameState.particles) {
         // Calculate screen position
-        const screenX = (particle.x - gameState.camera.x) * gameState.zoom;
-        const screenY = (particle.y - gameState.camera.y) * gameState.zoom;
+        const screenX = (particle.x - window.gameState.camera.x) * window.gameState.zoom;
+        const screenY = (particle.y - window.gameState.camera.y) * window.gameState.zoom;
         
         // Draw particle
-        gameState.ctx.fillStyle = particle.color;
-        gameState.ctx.globalAlpha = particle.life / 60; // Fade out as life decreases
-        gameState.ctx.fillRect(screenX, screenY, particle.size * gameState.zoom, particle.size * gameState.zoom);
-        gameState.ctx.globalAlpha = 1;
+        window.gameState.ctx.fillStyle = particle.color;
+        window.gameState.ctx.globalAlpha = particle.life / 60; // Fade out as life decreases
+        window.gameState.ctx.fillRect(screenX, screenY, particle.size * window.gameState.zoom, particle.size * window.gameState.zoom);
+        window.gameState.ctx.globalAlpha = 1;
     }
 }
 
@@ -335,13 +353,13 @@ function saveGame() {
     // Create save data object
     const saveData = {
         player: {
-            x: gameState.player.x,
-            y: gameState.player.y,
-            health: gameState.player.health
+            x: window.gameState.player.x,
+            y: window.gameState.player.y,
+            health: window.gameState.player.health
         },
-        inventory: gameState.inventory,
-        score: gameState.score,
-        worldSeed: gameState.worldSeed
+        inventory: window.gameState.inventory,
+        score: window.gameState.score,
+        worldSeed: window.gameState.worldSeed
     };
     
     // Convert to JSON and save to localStorage
@@ -361,16 +379,16 @@ function loadGame() {
         const saveData = JSON.parse(saveDataJson);
         
         // Restore player position and health
-        gameState.player.x = saveData.player.x;
-        gameState.player.y = saveData.player.y;
-        gameState.player.health = saveData.player.health;
+        window.gameState.player.x = saveData.player.x;
+        window.gameState.player.y = saveData.player.y;
+        window.gameState.player.health = saveData.player.health;
         
         // Restore inventory and score
-        gameState.inventory = saveData.inventory;
-        gameState.score = saveData.score;
+        window.gameState.inventory = saveData.inventory;
+        window.gameState.score = saveData.score;
         
         // Restore world seed
-        gameState.worldSeed = saveData.worldSeed;
+        window.gameState.worldSeed = saveData.worldSeed;
         
         // Regenerate world with the same seed
         initializeWorld();
@@ -406,12 +424,12 @@ function showMessage(text) {
 // Update camera to follow player
 function updateCamera() {
     // Center camera on player
-    gameState.camera.x = gameState.player.x + gameState.player.width / 2 - gameState.canvas.width / gameState.zoom / 2;
-    gameState.camera.y = gameState.player.y + gameState.player.height / 2 - gameState.canvas.height / gameState.zoom / 2;
+    window.gameState.camera.x = window.gameState.player.x + window.gameState.player.width / 2 - window.gameState.canvas.width / window.gameState.zoom / 2;
+    window.gameState.camera.y = window.gameState.player.y + window.gameState.player.height / 2 - window.gameState.canvas.height / window.gameState.zoom / 2;
     
     // Clamp camera to world bounds
-    gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH * TILE_SIZE - gameState.canvas.width / gameState.zoom));
-    gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - gameState.canvas.height / gameState.zoom));
+    window.gameState.camera.x = Math.max(0, Math.min(window.gameState.camera.x, WORLD_WIDTH * TILE_SIZE - window.gameState.canvas.width / window.gameState.zoom));
+    window.gameState.camera.y = Math.max(0, Math.min(window.gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - window.gameState.canvas.height / window.gameState.zoom));
 }
 
 // Place player safely above the terrain
@@ -420,15 +438,15 @@ function placePlayerSafely() {
     let spawnX = Math.floor(WORLD_WIDTH / 2);
     
     // Get terrain height at spawn position
-    const terrainHeight = gameState.terrainHeights[spawnX] || 0;
+    const terrainHeight = window.gameState.terrainHeights[spawnX] || 0;
     
     // Set player position
-    gameState.player.x = spawnX * TILE_SIZE;
-    gameState.player.y = (terrainHeight - 2) * TILE_SIZE; // Place player 2 tiles above the surface
+    window.gameState.player.x = spawnX * TILE_SIZE;
+    window.gameState.player.y = (terrainHeight - 2) * TILE_SIZE; // Place player 2 tiles above the surface
     
     // Center camera on player
-    gameState.camera.x = gameState.player.x - gameState.canvas.width / 2;
-    gameState.camera.y = gameState.player.y - gameState.canvas.height / 2;
+    window.gameState.camera.x = window.gameState.player.x - window.gameState.canvas.width / 2;
+    window.gameState.camera.y = window.gameState.player.y - window.gameState.canvas.height / 2;
 }
 
 // Add to inventory
@@ -465,18 +483,18 @@ function addToInventory(tileType) {
     }
     
     // Add to inventory
-    gameState.inventory[itemName] = (gameState.inventory[itemName] || 0) + 1;
+    window.gameState.inventory[itemName] = (window.gameState.inventory[itemName] || 0) + 1;
     
     // Update score based on item value
     if (tileType === TILE_TYPES.COAL) {
-        gameState.score += 5;
+        window.gameState.score += 5;
     } else if (tileType === TILE_TYPES.IRON) {
-        gameState.score += 10;
+        window.gameState.score += 10;
     } else if (tileType === TILE_TYPES.GOLD) {
-        gameState.score += 25;
+        window.gameState.score += 25;
     } else if (tileType === TILE_TYPES.DIAMOND) {
-        gameState.score += 100;
+        window.gameState.score += 100;
     } else {
-        gameState.score += 1;
+        window.gameState.score += 1;
     }
 } 
