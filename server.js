@@ -347,6 +347,9 @@ io.on('connection', (socket) => {
             console.log(`Generating new chunk at ${chunkX},${chunkY} with seed ${gameState.worldSeed}`);
             gameState.chunks[chunkKey] = worldGeneration.generateChunk(chunkX, chunkY, gameState);
             
+            // Process ant chambers for the newly generated chunk
+            worldGeneration.processAntChambers(gameState);
+            
             // Mark this chunk as server-generated to ensure consistency
             if (!gameState.chunks[chunkKey].metadata) {
                 gameState.chunks[chunkKey].metadata = {};
