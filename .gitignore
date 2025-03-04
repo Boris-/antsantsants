@@ -33,6 +33,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+world_save.json
+
 # Runtime data
 pids
 *.pid
