@@ -15,12 +15,6 @@ function generateWorld() {
     
     // We'll only generate chunks as needed, not the entire world at once
     // This makes it possible to have a huge world without performance issues
-    
-    // Place player above the surface at a safe location
-    placePlayerSafely();
-    
-    // Add some enemies on the surface near the player
-    spawnEnemies();
 }
 
 // Initialize biome data
@@ -243,42 +237,6 @@ function addTerrainFeatures() {
             }
         }
     }
-}
-
-// Place player safely above the terrain
-function placePlayerSafely() {
-    // Find a relatively flat area for the player
-    // Start with a random position near the center (between -50 and 50 tiles from center)
-    const randomOffset = Math.floor(Math.random() * 100) - 50;
-    const centerX = Math.floor(WORLD_WIDTH / 2) + randomOffset;
-    
-    // Search range - look within 30 tiles of the random center point
-    const searchStart = Math.max(5, centerX - 15);
-    const searchEnd = Math.min(WORLD_WIDTH - 5, centerX + 15);
-    
-    let bestX = centerX;
-    let minVariation = Infinity;
-    
-    // Look for flat areas by checking height variations
-    for (let x = searchStart; x < searchEnd; x++) {
-        let variation = 0;
-        for (let i = -2; i <= 2; i++) {
-            variation += Math.abs(gameState.terrainHeights[x + i] - gameState.terrainHeights[x]);
-        }
-        
-        if (variation < minVariation) {
-            minVariation = variation;
-            bestX = x;
-        }
-    }
-    
-    // Place player above the surface at the chosen location
-    const surfaceY = gameState.terrainHeights[bestX];
-    gameState.player.x = bestX * TILE_SIZE;
-    gameState.player.y = (surfaceY - 2) * TILE_SIZE;
-    
-    // Pre-generate chunks around the player for initial view
-    preGenerateChunksAroundPlayer();
 }
 
 // Pre-generate chunks around the player for initial view

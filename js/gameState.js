@@ -170,75 +170,7 @@ function setTile(x, y, tileType, sendToServer = true) {
     }
 }
 
-// Place player safely above the terrain
-function placePlayerSafely() {
-    // Find a relatively flat area for the player
-    // Start with a random position near the center (between -50 and 50 tiles from center)
-    const randomOffset = Math.floor(Math.random() * 100) - 50;
-    const centerX = Math.floor(WORLD_WIDTH / 2) + randomOffset;
-    
-    // Search range - look within 30 tiles of the random center point
-    const searchStart = Math.max(5, centerX - 15);
-    const searchEnd = Math.min(WORLD_WIDTH - 5, centerX + 15);
-    
-    let bestX = centerX;
-    let minVariation = Infinity;
-    
-    // Look for flat areas by checking height variations
-    for (let x = searchStart; x < searchEnd; x++) {
-        let variation = 0;
-        for (let i = -2; i <= 2; i++) {
-            if (gameState.terrainHeights[x + i] !== undefined) {
-                variation += Math.abs(gameState.terrainHeights[x + i] - gameState.terrainHeights[x]);
-            }
-        }
-        
-        if (variation < minVariation) {
-            minVariation = variation;
-            bestX = x;
-        }
-    }
-    
-    // Place player above the surface at the chosen location
-    const surfaceY = gameState.terrainHeights[bestX] || Math.floor(WORLD_HEIGHT / 3);
-    gameState.player.x = bestX * TILE_SIZE;
-    gameState.player.y = (surfaceY - 2) * TILE_SIZE;
-}
 
-// Update inventory display
-/*
-function updateInventoryDisplay() {
-    // Get inventory container
-    const inventoryContainer = document.getElementById('inventory-container');
-    if (!inventoryContainer) return;
-    
-    // Clear existing inventory
-    inventoryContainer.innerHTML = '';
-    
-    // Create inventory items
-    for (const [item, count] of Object.entries(gameState.player.inventory)) {
-        if (count > 0) {
-            const itemElement = document.createElement('div');
-            itemElement.className = 'inventory-item';
-            itemElement.innerHTML = `
-                <div class="item-icon ${item}"></div>
-                <div class="item-count">${count}</div>
-            `;
-            inventoryContainer.appendChild(itemElement);
-        }
-    }
-}
-
-// Update score display
-function updateScoreDisplay() {
-    // Get score container
-    const scoreContainer = document.getElementById('score-container');
-    if (!scoreContainer) return;
-    
-    // Update score
-    scoreContainer.textContent = `Score: ${gameState.score}`;
-}
-*/
 
 // Initialize UI elements
 function initializeUI() {

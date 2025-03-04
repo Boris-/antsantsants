@@ -77,9 +77,6 @@ function setupSocketEvents() {
             initializeBiomes();
         }
         
-        // Place player at a safe location
-        placePlayerSafely();
-        
         // Request chunks around player
         requestInitialChunks();
         
@@ -262,10 +259,7 @@ function setupSocketEvents() {
         if (gameState.chunkMetadata) {
             gameState.chunkMetadata = {};
         }
-        
-        // Place player at a safe location
-        placePlayerSafely();
-        
+                
         // Request chunks around player
         requestInitialChunks();
         

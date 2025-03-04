@@ -438,22 +438,6 @@ function updateCamera() {
     window.gameState.camera.y = Math.max(0, Math.min(window.gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - window.gameState.canvas.height / window.gameState.zoom));
 }
 
-// Place player safely above the terrain
-function placePlayerSafely() {
-    // Find a relatively flat area for the player
-    let spawnX = Math.floor(WORLD_WIDTH / 2);
-    
-    // Get terrain height at spawn position
-    const terrainHeight = window.gameState.terrainHeights[spawnX] || 0;
-    
-    // Set player position
-    window.gameState.player.x = spawnX * TILE_SIZE;
-    window.gameState.player.y = (terrainHeight - 2) * TILE_SIZE; // Place player 2 tiles above the surface
-    
-    // Center camera on player
-    window.gameState.camera.x = window.gameState.player.x - window.gameState.canvas.width / 2;
-    window.gameState.camera.y = window.gameState.player.y - window.gameState.canvas.height / 2;
-}
 
 // Add to inventory
 function addToInventory(tileType) {
