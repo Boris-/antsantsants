@@ -82,17 +82,27 @@ const PLAYER_CONSTANTS = {
     WIDTH_RATIO: 0.6,  // 60% of tile size
     HEIGHT_RATIO: 0.5, // 50% of tile size
     DIG_RANGE: 3,      // tiles
-    SPEED: 2           // pixels per frame
+    SPEED: 3,          // pixels per frame (increased for more agile movement)
+    GRAVITY: 0.3,      // gravity acceleration (reduced for lighter feel)
+    JUMP_FORCE: -8,    // initial jump velocity (reduced magnitude for more controlled jumps)
+    MAX_FALL_SPEED: 8, // maximum falling speed (reduced for lighter feel)
+    GROUND_FRICTION: 0.85, // friction when on ground (slightly increased for better control)
+    WALL_SLIDE_SPEED: 2,   // Speed at which ant slides down walls
+    WALL_STICK_FORCE: 0.5  // How strongly ant sticks to walls when climbing
 };
 
 // Update game state
 function updateGame(deltaTime) {
     // Update player properties using constants
-    const { WIDTH_RATIO, HEIGHT_RATIO, DIG_RANGE, SPEED } = PLAYER_CONSTANTS;
+    const { WIDTH_RATIO, HEIGHT_RATIO, DIG_RANGE, SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE } = PLAYER_CONSTANTS;
     gameState.player.width = TILE_SIZE * WIDTH_RATIO;
     gameState.player.height = TILE_SIZE * HEIGHT_RATIO;
     gameState.player.digRange = TILE_SIZE * DIG_RANGE;
     gameState.player.speed = SPEED;
+    gameState.player.gravity = GRAVITY;
+    gameState.player.jumpForce = JUMP_FORCE;
+    gameState.player.maxFallSpeed = MAX_FALL_SPEED;
+    gameState.player.groundFriction = GROUND_FRICTION;
     
     // Update game components
     handlePlayerMovement();
@@ -121,10 +131,13 @@ function updateCamera() {
     const targetX = gameState.player.x + (gameState.player.width / 2) - (centerX / zoom);
     const targetY = gameState.player.y + (gameState.player.height / 2) - (centerY / zoom);
     
-    // Smoothly interpolate camera position
-    const CAMERA_SMOOTHING = 0.1;
-    gameState.camera.x += (targetX - gameState.camera.x) * CAMERA_SMOOTHING;
-    gameState.camera.y += (targetY - gameState.camera.y) * CAMERA_SMOOTHING;
+    // Use different smoothing values for horizontal and vertical movement
+    const HORIZONTAL_SMOOTHING = 0.1;  // Responsive horizontal movement
+    const VERTICAL_SMOOTHING = 0.03;   // Much smoother vertical movement
+    
+    // Apply smoothing separately for X and Y
+    gameState.camera.x += (targetX - gameState.camera.x) * HORIZONTAL_SMOOTHING;
+    gameState.camera.y += (targetY - gameState.camera.y) * VERTICAL_SMOOTHING;
 }
 
 // Update UI elements
@@ -279,17 +292,13 @@ function getTileName(tileType) {
 
 // Handle player movement
 function handlePlayerMovement() {
-    // Reset movement
+    // Get player constants
+    const { SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE } = PLAYER_CONSTANTS;
+
+    // Get movement input
     let moveX = 0;
     let moveY = 0;
     
-    // Check keyboard input
-    if (gameState.keys.ArrowUp || gameState.keys.w || gameState.keys.W) {
-        moveY = -1;
-    }
-    if (gameState.keys.ArrowDown || gameState.keys.s || gameState.keys.S) {
-        moveY = 1;
-    }
     if (gameState.keys.ArrowLeft || gameState.keys.a || gameState.keys.A) {
         moveX = -1;
         gameState.player.direction = -1; // Face left
@@ -298,42 +307,115 @@ function handlePlayerMovement() {
         moveX = 1;
         gameState.player.direction = 1; // Face right
     }
-    
-    // Normalize diagonal movement
-    if (moveX !== 0 && moveY !== 0) {
-        moveX *= 0.7071; // 1/sqrt(2)
-        moveY *= 0.7071;
+    if (gameState.keys.ArrowUp || gameState.keys.w || gameState.keys.W) {
+        moveY = -1;
     }
-    
-    // Apply movement speed
-    moveX *= gameState.player.speed;
-    moveY *= gameState.player.speed;
-    
+    if (gameState.keys.ArrowDown || gameState.keys.s || gameState.keys.S) {
+        moveY = 1;
+    }
+
+    // Initialize states if they don't exist
+    if (typeof gameState.player.velocityX === 'undefined') {
+        gameState.player.velocityX = 0;
+    }
+    if (typeof gameState.player.velocityY === 'undefined') {
+        gameState.player.velocityY = 0;
+    }
+    if (typeof gameState.player.isGrounded === 'undefined') {
+        gameState.player.isGrounded = false;
+    }
+    if (typeof gameState.player.isWallSticking === 'undefined') {
+        gameState.player.isWallSticking = false;
+    }
+
+    // Check for wall contact
+    const touchingLeftWall = checkCollision(gameState.player.x - 1, gameState.player.y);
+    const touchingRightWall = checkCollision(gameState.player.x + 1, gameState.player.y);
+    gameState.player.isWallSticking = (touchingLeftWall || touchingRightWall) && !gameState.player.isGrounded;
+
+    // Handle wall climbing
+    if (gameState.player.isWallSticking) {
+        // Allow vertical movement along the wall
+        if (moveY !== 0) {
+            gameState.player.velocityY = moveY * SPEED * 0.7;
+        } else {
+            // Slow wall slide
+            gameState.player.velocityY = Math.min(WALL_SLIDE_SPEED, gameState.player.velocityY);
+        }
+
+        // Wall jump
+        if (gameState.keys.Space) {
+            // Jump away from wall
+            gameState.player.velocityY = JUMP_FORCE;
+            gameState.player.velocityX = (touchingLeftWall ? 1 : -1) * SPEED * 1.5;
+            gameState.player.isWallSticking = false;
+        }
+
+        // Apply wall stick force
+        gameState.player.velocityX *= WALL_STICK_FORCE;
+    } else {
+        // Normal horizontal movement
+        const acceleration = gameState.player.isGrounded ? 1 : 0.5;
+        gameState.player.velocityX += moveX * acceleration;
+
+        // Apply ground friction
+        if (gameState.player.isGrounded) {
+            gameState.player.velocityX *= GROUND_FRICTION;
+        }
+
+        // Apply gravity
+        gameState.player.velocityY += GRAVITY;
+    }
+
+    // Limit speeds
+    gameState.player.velocityX = Math.max(-SPEED, Math.min(SPEED, gameState.player.velocityX));
+    gameState.player.velocityY = Math.min(gameState.player.velocityY, MAX_FALL_SPEED);
+
+    // Handle normal jumping
+    if ((gameState.keys.ArrowUp || gameState.keys.w || gameState.keys.W || gameState.keys.Space) && gameState.player.isGrounded) {
+        gameState.player.velocityY = JUMP_FORCE;
+        gameState.player.isGrounded = false;
+    }
+
+    // Reset grounded state before collision checks
+    gameState.player.isGrounded = false;
+
     // Try to move horizontally
-    if (moveX !== 0) {
-        const newX = gameState.player.x + moveX;
+    if (gameState.player.velocityX !== 0) {
+        const newX = gameState.player.x + gameState.player.velocityX;
         
         // Check for collision
         if (!checkCollision(newX, gameState.player.y)) {
             gameState.player.x = newX;
+        } else {
+            // Hit a wall, stop horizontal movement
+            gameState.player.velocityX = 0;
         }
     }
-    
+
     // Try to move vertically
-    if (moveY !== 0) {
-        const newY = gameState.player.y + moveY;
+    if (gameState.player.velocityY !== 0) {
+        const newY = gameState.player.y + gameState.player.velocityY;
         
         // Check for collision
         if (!checkCollision(gameState.player.x, newY)) {
             gameState.player.y = newY;
+        } else {
+            // Hit something
+            if (gameState.player.velocityY > 0) {
+                // Hit the ground
+                gameState.player.isGrounded = true;
+            }
+            gameState.player.velocityY = 0;
         }
     }
-    
-    // Update player direction for multiplayer
-    if (gameState.player.velocityX > 0) {
-        gameState.player.direction = 1;
-    } else if (gameState.player.velocityX < 0) {
-        gameState.player.direction = -1;
+
+    // Check if we're standing on ground
+    if (!gameState.player.isGrounded) {
+        // Check one pixel below the player
+        if (checkCollision(gameState.player.x, gameState.player.y + 1)) {
+            gameState.player.isGrounded = true;
+        }
     }
 }
 
