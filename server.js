@@ -660,11 +660,12 @@ function generateSimplifiedTerrainMap(size) {
 initializeWorld();
 
 // Start server
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3001; 
 const HOST = process.env.HOST || '0.0.0.0';  // Allow connections from all network interfaces in production
 server.listen(PORT, HOST, () => {
     console.log(`Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
+
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {
