@@ -26,9 +26,13 @@ const TILE_COLORS = {
 function drawWorld() {
     const { ctx, canvas, camera, zoom, isZooming } = gameState;
     
-    // Draw background sky
-    ctx.fillStyle = '#87CEEB';
+    // Draw background sky based on time of day
+    const skyColor = getSkyColor();
+    ctx.fillStyle = skyColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw sun or moon based on time of day
+    drawCelestialBody();
     
     // Calculate visible chunks based on zoom level
     const startChunkX = Math.floor(camera.x / TILE_SIZE / CHUNK_SIZE);
@@ -561,5 +565,146 @@ function drawEnemiesDirect() {
             );
             gameState.ctx.fill();
         }
+    }
+}
+
+// Function to calculate sky color based on time of day
+function getSkyColor() {
+    if (!gameState.dayNightCycle || !gameState.dayNightCycle.enabled) {
+        return '#87CEEB'; // Default sky blue
+    }
+    
+    const time = gameState.dayNightCycle.time;
+    
+    // Day: 0.25 to 0.75 (noon at 0.5)
+    // Night: 0.75 to 0.25 (midnight at 0)
+    
+    // Dawn/dusk transition periods
+    const dawnStart = 0.2;
+    const dawnEnd = 0.3;
+    const duskStart = 0.7;
+    const duskEnd = 0.8;
+    
+    // Day and night colors
+    const dayColor = { r: 135, g: 206, b: 235 }; // Sky blue
+    const nightColor = { r: 10, g: 10, b: 35 };  // Dark blue
+    const dawnDuskColor = { r: 255, g: 130, b: 80 }; // Orange-ish
+    
+    // Helper to interpolate between colors
+    function interpolateColor(color1, color2, factor) {
+        return {
+            r: Math.round(color1.r + (color2.r - color1.r) * factor),
+            g: Math.round(color1.g + (color2.g - color1.g) * factor),
+            b: Math.round(color1.b + (color2.b - color1.b) * factor)
+        };
+    }
+    
+    // Dawn transition
+    if (time >= dawnStart && time <= dawnEnd) {
+        const factor = (time - dawnStart) / (dawnEnd - dawnStart);
+        const color = interpolateColor(nightColor, dawnDuskColor, factor);
+        return `rgb(${color.r}, ${color.g}, ${color.b})`;
+    } 
+    // Morning transition
+    else if (time > dawnEnd && time < 0.5) {
+        const factor = (time - dawnEnd) / (0.5 - dawnEnd);
+        const color = interpolateColor(dawnDuskColor, dayColor, factor);
+        return `rgb(${color.r}, ${color.g}, ${color.b})`;
+    }
+    // Afternoon
+    else if (time >= 0.5 && time < duskStart) {
+        return `rgb(${dayColor.r}, ${dayColor.g}, ${dayColor.b})`;
+    }
+    // Dusk transition
+    else if (time >= duskStart && time <= duskEnd) {
+        const factor = (time - duskStart) / (duskEnd - duskStart);
+        const color = interpolateColor(dayColor, dawnDuskColor, factor);
+        return `rgb(${color.r}, ${color.g}, ${color.b})`;
+    }
+    // Night transition
+    else if (time > duskEnd && time < 1.0) {
+        const factor = (time - duskEnd) / (1.0 - duskEnd);
+        const color = interpolateColor(dawnDuskColor, nightColor, factor);
+        return `rgb(${color.r}, ${color.g}, ${color.b})`;
+    }
+    // Deep night
+    else {
+        return `rgb(${nightColor.r}, ${nightColor.g}, ${nightColor.b})`;
+    }
+}
+
+// Function to draw the sun or moon
+function drawCelestialBody() {
+    if (!gameState.dayNightCycle || !gameState.dayNightCycle.enabled) {
+        return;
+    }
+    
+    const { ctx, canvas } = gameState;
+    const time = gameState.dayNightCycle.time;
+    
+    // Position the celestial body based on time (circular path across the sky)
+    const angle = (time * 2 * Math.PI) - (Math.PI / 2); // Start at top (noon)
+    const radius = Math.min(canvas.width, canvas.height) * 0.4; // Orbit radius
+    
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height + radius * 0.5; // Position horizon lower
+    
+    // Only show celestial body when it's above the horizon
+    if (time >= 0.25 && time <= 0.75) {
+        // It's daytime - draw the sun
+        const x = centerX + Math.cos(angle) * radius;
+        const y = centerY + Math.sin(angle) * radius;
+        const sunSize = 40;
+        
+        // Draw sun glow
+        const gradient = ctx.createRadialGradient(x, y, sunSize * 0.5, x, y, sunSize * 2);
+        gradient.addColorStop(0, 'rgba(255, 255, 200, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 240, 150, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x - sunSize * 2, y - sunSize * 2, sunSize * 4, sunSize * 4);
+        
+        // Draw sun
+        ctx.fillStyle = '#FFFF00';
+        ctx.beginPath();
+        ctx.arc(x, y, sunSize, 0, Math.PI * 2);
+        ctx.fill();
+    } else if ((time >= 0 && time < 0.25) || (time > 0.75 && time <= 1)) {
+        // It's nighttime - draw the moon
+        // Offset the moon so it's opposite the sun
+        const moonAngle = angle + Math.PI;
+        const x = centerX + Math.cos(moonAngle) * radius;
+        const y = centerY + Math.sin(moonAngle) * radius;
+        const moonSize = 30;
+        
+        // Draw moon glow
+        const gradient = ctx.createRadialGradient(x, y, moonSize * 0.5, x, y, moonSize * 1.5);
+        gradient.addColorStop(0, 'rgba(200, 200, 255, 0.5)');
+        gradient.addColorStop(1, 'rgba(200, 200, 255, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x - moonSize * 2, y - moonSize * 2, moonSize * 4, moonSize * 4);
+        
+        // Draw moon
+        ctx.fillStyle = '#DDDDFF';
+        ctx.beginPath();
+        ctx.arc(x, y, moonSize, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw moon craters for detail
+        ctx.fillStyle = '#CCCCEE';
+        // Crater 1
+        ctx.beginPath();
+        ctx.arc(x - moonSize * 0.3, y - moonSize * 0.2, moonSize * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        // Crater 2
+        ctx.beginPath();
+        ctx.arc(x + moonSize * 0.1, y + moonSize * 0.3, moonSize * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        // Crater 3
+        ctx.beginPath();
+        ctx.arc(x + moonSize * 0.4, y - moonSize * 0.4, moonSize * 0.1, 0, Math.PI * 2);
+        ctx.fill();
     }
 } 

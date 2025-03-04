@@ -117,35 +117,37 @@ function updateCamera() {
     gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - gameState.canvas.height / gameState.zoom));
 }
 
-// Update day/night cycle
+// Function to update the day/night cycle on the client side
 function updateDayNightCycle(timestamp) {
-    if (!gameState.dayNightCycle.lastUpdate) {
-        gameState.dayNightCycle.lastUpdate = timestamp;
+    if (!gameState.dayNightCycle || !gameState.dayNightCycle.lastUpdate) {
         return;
     }
     
-    const elapsed = timestamp - gameState.dayNightCycle.lastUpdate;
-    gameState.dayNightCycle.time += elapsed / gameState.dayNightCycle.dayLength;
-    gameState.dayNightCycle.lastUpdate = timestamp;
+    // Calculate time elapsed since last update
+    const now = timestamp || Date.now();
+    const elapsed = now - gameState.dayNightCycle.lastUpdate;
     
-    // Reset time after a full day
-    if (gameState.dayNightCycle.time > 1) {
+    // Calculate the time adjustment (smooth client-side interpolation)
+    // Only do a small adjustment locally to avoid desyncing too much from server
+    const adjustment = elapsed / gameState.dayNightCycle.dayLength;
+    
+    // Small incremental update for smoother transitions
+    gameState.dayNightCycle.time += adjustment;
+    
+    // Keep time between 0 and 1
+    while (gameState.dayNightCycle.time >= 1) {
         gameState.dayNightCycle.time -= 1;
     }
     
-    // Update day/night overlay
-    const dayNightOverlay = document.querySelector('.day-night-overlay');
-    if (!dayNightOverlay) {
-        const overlay = document.createElement('div');
-        overlay.className = 'day-night-overlay';
-        document.body.appendChild(overlay);
-    } else {
-        // Night time is between 0.7 and 0.95
-        if (gameState.dayNightCycle.time > 0.7 && gameState.dayNightCycle.time < 0.95) {
-            dayNightOverlay.classList.add('night');
-        } else {
-            dayNightOverlay.classList.remove('night');
-        }
+    // Update lastUpdate for next frame
+    gameState.dayNightCycle.lastUpdate = now;
+    
+    // Add time display to UI if it exists
+    const timeDisplay = document.getElementById('timeDisplay');
+    if (timeDisplay) {
+        const hours = Math.floor(gameState.dayNightCycle.time * 24);
+        const minutes = Math.floor((gameState.dayNightCycle.time * 24 * 60) % 60);
+        timeDisplay.textContent = `Time: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     }
 }
 

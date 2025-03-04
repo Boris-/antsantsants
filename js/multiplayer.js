@@ -137,6 +137,17 @@ function setupSocketEvents() {
         gameState.terrainHeights = data.terrainHeights;
         gameState.biomeMap = data.biomeMap;
         
+        // Initialize day/night cycle if provided
+        if (data.dayNightCycle) {
+            gameState.dayNightCycle = {
+                ...gameState.dayNightCycle,
+                time: data.dayNightCycle.time,
+                dayLength: data.dayNightCycle.dayLength,
+                enabled: true,
+                lastUpdate: Date.now()
+            };
+        }
+        
         if (!gameState.biomeTypes) {
             initializeBiomes();
         }
@@ -194,6 +205,21 @@ function setupSocketEvents() {
         
         showNotification('World has been reset');
         requestInitialChunks();
+    });
+    
+    // Handle day/night cycle updates
+    socket.on('dayNightUpdate', (data) => {
+        if (!gameState.dayNightCycle) {
+            gameState.dayNightCycle = {
+                enabled: true,
+                lastUpdate: Date.now()
+            };
+        }
+        
+        // Update the day/night cycle data
+        gameState.dayNightCycle.time = data.time;
+        gameState.dayNightCycle.dayLength = data.dayLength;
+        gameState.dayNightCycle.lastUpdate = Date.now();
     });
 }
 

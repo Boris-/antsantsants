@@ -222,6 +222,8 @@ const SOLID_TILES = new Set([
 ]);
 
 const COLLECTIBLE_TILES = new Set([
+    TILE_TYPES.DIRT,
+    TILE_TYPES.STONE,
     TILE_TYPES.COAL,
     TILE_TYPES.IRON,
     TILE_TYPES.GOLD,

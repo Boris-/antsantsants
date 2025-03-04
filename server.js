@@ -38,6 +38,12 @@ let gameState = {
         createdAt: Date.now(),
         lastSaved: null,
         blockUpdates: 0
+    },
+    // Add day/night cycle data
+    dayNightCycle: {
+        time: 0, // 0-1 representing time of day (0 = midnight, 0.5 = noon)
+        dayLength: 1200000, // 20 minutes in milliseconds for a full day cycle
+        lastUpdate: Date.now()
     }
 };
 
@@ -59,6 +65,29 @@ function cleanupRecentBlockUpdates() {
 
 // Run cleanup every 30 seconds
 setInterval(cleanupRecentBlockUpdates, 30000);
+
+// Function to update day/night cycle and broadcast to clients
+function updateDayNightCycle() {
+    const now = Date.now();
+    const elapsed = now - gameState.dayNightCycle.lastUpdate;
+    
+    // Calculate new time
+    gameState.dayNightCycle.time += elapsed / gameState.dayNightCycle.dayLength;
+    
+    // Keep time between 0 and 1
+    while (gameState.dayNightCycle.time >= 1) {
+        gameState.dayNightCycle.time -= 1;
+    }
+    
+    // Update last update time
+    gameState.dayNightCycle.lastUpdate = now;
+    
+    // Broadcast to all clients
+    io.emit('dayNightUpdate', {
+        time: gameState.dayNightCycle.time,
+        dayLength: gameState.dayNightCycle.dayLength
+    });
+}
 
 // Initialize world
 function initializeWorld() {
@@ -89,6 +118,11 @@ function saveWorld() {
                 ...gameState.worldMetadata,
                 lastSaved: Date.now(),
                 hasUnsavedChanges: false
+            },
+            dayNightCycle: {
+                time: gameState.dayNightCycle.time,
+                dayLength: gameState.dayNightCycle.dayLength,
+                lastUpdate: Date.now()
             }
         };
         
@@ -118,12 +152,25 @@ function loadWorld() {
         gameState.worldSeed = saveData.worldSeed;
         gameState.terrainHeights = saveData.terrainHeights;
         gameState.biomeMap = saveData.biomeMap;
-        gameState.chunks = saveData.chunks;
-        gameState.worldMetadata = saveData.worldMetadata || {
-            createdAt: Date.now(),
-            lastSaved: Date.now(),
-            blockUpdates: 0
-        };
+        gameState.chunks = saveData.chunks || {};
+        
+        // Update world metadata if available
+        if (saveData.worldMetadata) {
+            gameState.worldMetadata = {
+                ...gameState.worldMetadata,
+                ...saveData.worldMetadata,
+                lastLoaded: Date.now()
+            };
+        }
+        
+        // Load day/night cycle if available
+        if (saveData.dayNightCycle) {
+            gameState.dayNightCycle = {
+                ...gameState.dayNightCycle,
+                ...saveData.dayNightCycle,
+                lastUpdate: Date.now() // Reset lastUpdate to now
+            };
+        }
         
         // Initialize biomes if not loaded
         if (!gameState.biomeTypes) {
@@ -145,6 +192,12 @@ setInterval(() => {
     saveWorld();
 }, AUTO_SAVE_INTERVAL);
 
+// Update day/night cycle every minute
+const DAY_NIGHT_UPDATE_INTERVAL = 60 * 1000; // 1 minute
+setInterval(() => {
+    updateDayNightCycle();
+}, DAY_NIGHT_UPDATE_INTERVAL);
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
@@ -164,7 +217,11 @@ io.on('connection', (socket) => {
         players: gameState.players,
         worldSeed: gameState.worldSeed,
         terrainHeights: gameState.terrainHeights,
-        biomeMap: gameState.biomeMap
+        biomeMap: gameState.biomeMap,
+        dayNightCycle: {
+            time: gameState.dayNightCycle.time,
+            dayLength: gameState.dayNightCycle.dayLength
+        }
     });
     
     // Broadcast new player to all other clients
