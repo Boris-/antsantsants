@@ -88,13 +88,17 @@ const PLAYER_CONSTANTS = {
     MAX_FALL_SPEED: 8, // maximum falling speed (reduced for lighter feel)
     GROUND_FRICTION: 0.85, // friction when on ground (slightly increased for better control)
     WALL_SLIDE_SPEED: 2,   // Speed at which ant slides down walls
-    WALL_STICK_FORCE: 0.5  // How strongly ant sticks to walls when climbing
+    WALL_STICK_FORCE: 0.5,  // How strongly ant sticks to walls when climbing
+    PARACHUTE_DEPLOY_SPEED: 5, // Speed at which parachute deploys
+    PARACHUTE_FALL_SPEED: 2,   // Fall speed with parachute
+    PARACHUTE_DRIFT: 0.5       // Horizontal drift with parachute
 };
 
 // Update game state
 function updateGame(deltaTime) {
     // Update player properties using constants
-    const { WIDTH_RATIO, HEIGHT_RATIO, DIG_RANGE, SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE } = PLAYER_CONSTANTS;
+    const { WIDTH_RATIO, HEIGHT_RATIO, DIG_RANGE, SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE, 
+            PARACHUTE_DEPLOY_SPEED, PARACHUTE_FALL_SPEED, PARACHUTE_DRIFT } = PLAYER_CONSTANTS;
     gameState.player.width = TILE_SIZE * WIDTH_RATIO;
     gameState.player.height = TILE_SIZE * HEIGHT_RATIO;
     gameState.player.digRange = TILE_SIZE * DIG_RANGE;
@@ -293,7 +297,25 @@ function getTileName(tileType) {
 // Handle player movement
 function handlePlayerMovement() {
     // Get player constants
-    const { SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE } = PLAYER_CONSTANTS;
+    const { SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE, 
+            PARACHUTE_DEPLOY_SPEED, PARACHUTE_FALL_SPEED, PARACHUTE_DRIFT } = PLAYER_CONSTANTS;
+
+    // Initialize states if they don't exist
+    if (typeof gameState.player.velocityX === 'undefined') {
+        gameState.player.velocityX = 0;
+    }
+    if (typeof gameState.player.velocityY === 'undefined') {
+        gameState.player.velocityY = 0;
+    }
+    if (typeof gameState.player.isGrounded === 'undefined') {
+        gameState.player.isGrounded = false;
+    }
+    if (typeof gameState.player.isWallSticking === 'undefined') {
+        gameState.player.isWallSticking = false;
+    }
+    if (typeof gameState.player.hasParachute === 'undefined') {
+        gameState.player.hasParachute = false;
+    }
 
     // Get movement input
     let moveX = 0;
@@ -314,27 +336,29 @@ function handlePlayerMovement() {
         moveY = 1;
     }
 
-    // Initialize states if they don't exist
-    if (typeof gameState.player.velocityX === 'undefined') {
-        gameState.player.velocityX = 0;
-    }
-    if (typeof gameState.player.velocityY === 'undefined') {
-        gameState.player.velocityY = 0;
-    }
-    if (typeof gameState.player.isGrounded === 'undefined') {
-        gameState.player.isGrounded = false;
-    }
-    if (typeof gameState.player.isWallSticking === 'undefined') {
-        gameState.player.isWallSticking = false;
-    }
-
     // Check for wall contact
     const touchingLeftWall = checkCollision(gameState.player.x - 1, gameState.player.y);
     const touchingRightWall = checkCollision(gameState.player.x + 1, gameState.player.y);
     gameState.player.isWallSticking = (touchingLeftWall || touchingRightWall) && !gameState.player.isGrounded;
 
-    // Handle wall climbing
-    if (gameState.player.isWallSticking) {
+    // Handle parachute deployment
+    if (!gameState.player.isGrounded && !gameState.player.isWallSticking && gameState.player.velocityY > PARACHUTE_DEPLOY_SPEED) {
+        gameState.player.hasParachute = true;
+    } else if (gameState.player.isGrounded || gameState.player.isWallSticking) {
+        gameState.player.hasParachute = false;
+    }
+
+    // Apply movement physics
+    if (gameState.player.hasParachute) {
+        // Slow fall with parachute
+        gameState.player.velocityY = Math.min(gameState.player.velocityY, PARACHUTE_FALL_SPEED);
+        
+        // Allow slight horizontal movement with parachute
+        if (moveX !== 0) {
+            gameState.player.velocityX += moveX * PARACHUTE_DRIFT;
+            gameState.player.velocityX = Math.max(-SPEED * 0.5, Math.min(SPEED * 0.5, gameState.player.velocityX));
+        }
+    } else if (gameState.player.isWallSticking) {
         // Allow vertical movement along the wall
         if (moveY !== 0) {
             gameState.player.velocityY = moveY * SPEED * 0.7;
@@ -952,6 +976,48 @@ function drawAnt() {
         centerY
     );
     gameState.ctx.stroke();
+
+    // Draw parachute if deployed
+    if (gameState.player.hasParachute) {
+        const parachuteWidth = antWidth * 2;
+        const parachuteHeight = antHeight * 1.2;
+        const parachuteX = centerX - parachuteWidth / 2;
+        const parachuteY = centerY - parachuteHeight;
+
+        // Draw parachute canopy (cute rounded shape)
+        gameState.ctx.fillStyle = "#FFB6C1"; // Light pink
+        gameState.ctx.beginPath();
+        gameState.ctx.moveTo(parachuteX, parachuteY + parachuteHeight * 0.5);
+        gameState.ctx.bezierCurveTo(
+            parachuteX, parachuteY,
+            parachuteX + parachuteWidth, parachuteY,
+            parachuteX + parachuteWidth, parachuteY + parachuteHeight * 0.5
+        );
+        gameState.ctx.fill();
+
+        // Add stripes to the parachute
+        gameState.ctx.strokeStyle = "#FFC0CB"; // Pink
+        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.05);
+        for (let i = 1; i < 4; i++) {
+            const x = parachuteX + (parachuteWidth * i / 4);
+            gameState.ctx.beginPath();
+            gameState.ctx.moveTo(x, parachuteY + parachuteHeight * 0.1);
+            gameState.ctx.lineTo(x, parachuteY + parachuteHeight * 0.4);
+            gameState.ctx.stroke();
+        }
+
+        // Draw strings
+        gameState.ctx.strokeStyle = "#FFB6C1";
+        gameState.ctx.lineWidth = Math.max(1, antWidth * 0.02);
+        const stringCount = 4;
+        for (let i = 0; i <= stringCount; i++) {
+            const x = parachuteX + (parachuteWidth * i / stringCount);
+            gameState.ctx.beginPath();
+            gameState.ctx.moveTo(x, parachuteY + parachuteHeight * 0.4);
+            gameState.ctx.lineTo(centerX + (i - stringCount/2) * (antWidth * 0.2), centerY - antHeight * 0.3);
+            gameState.ctx.stroke();
+        }
+    }
 }
 
 // Draw UI
