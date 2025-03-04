@@ -49,12 +49,12 @@ function cleanupRecentBlockUpdates() {
     const now = Date.now();
     const expirationTime = 10000; // 10 seconds
     
-    // Remove entries older than expirationTime
-    for (const [key, timestamp] of gameState.recentBlockUpdates.entries()) {
-        if (now - timestamp > expirationTime) {
-            gameState.recentBlockUpdates.delete(key);
-        }
-    }
+    // Use more efficient array-based cleanup
+    const keysToDelete = Array.from(gameState.recentBlockUpdates.entries())
+        .filter(([_, timestamp]) => now - timestamp > expirationTime)
+        .map(([key]) => key);
+    
+    keysToDelete.forEach(key => gameState.recentBlockUpdates.delete(key));
 }
 
 // Run cleanup every 30 seconds
@@ -67,27 +67,13 @@ function initializeWorld() {
         console.log('Loaded existing world with seed:', gameState.worldSeed);
     } else {
         console.log('Initializing new world with seed:', gameState.worldSeed);
-        
-        // Initialize biomes
-        worldGeneration.initializeBiomes(gameState);
-        
-        // Generate biome map
-        gameState.biomeMap = worldGeneration.generateBiomeMap(gameState);
-        
-        // Generate terrain heights
-        worldGeneration.generateTerrainHeights(gameState);
-        
+        worldGeneration.initializeNewWorld(gameState);
         console.log('World initialized successfully');
-        
-        // Save the newly generated world
         saveWorld();
     }
     
     // Ensure the world seed is a number
     gameState.worldSeed = Number(gameState.worldSeed);
-    
-    // Log the seed for debugging
-    console.log('World seed (after initialization):', gameState.worldSeed, 'Type:', typeof gameState.worldSeed);
 }
 
 // Save world state to file

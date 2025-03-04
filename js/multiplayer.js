@@ -7,268 +7,194 @@ let isConnectedToServer = false;
 // Track recently processed block updates to prevent duplicates
 const recentBlockUpdates = new Map();
 
+// Constants
+const CLEANUP_INTERVAL = 30000; // 30 seconds
+const BLOCK_UPDATE_COOLDOWN = 500; // 500ms
+const EXPIRATION_TIME = 10000; // 10 seconds
+const NOTIFICATION_DURATION = 5000; // 5 seconds
+
 // Cleanup function for recentBlockUpdates map
 function cleanupRecentBlockUpdates() {
     const now = Date.now();
-    const expirationTime = 10000; // 10 seconds
+    const keysToDelete = Array.from(recentBlockUpdates.entries())
+        .filter(([_, timestamp]) => now - timestamp > EXPIRATION_TIME)
+        .map(([key]) => key);
     
-    // Remove entries older than expirationTime
-    for (const [key, timestamp] of recentBlockUpdates.entries()) {
-        if (now - timestamp > expirationTime) {
-            recentBlockUpdates.delete(key);
-        }
-    }
+    keysToDelete.forEach(key => recentBlockUpdates.delete(key));
 }
 
 // Run cleanup every 30 seconds
-setInterval(cleanupRecentBlockUpdates, 30000);
+setInterval(cleanupRecentBlockUpdates, CLEANUP_INTERVAL);
 
 // Initialize multiplayer connection
 function initializeMultiplayer() {
-    // Connect to the server
     socket = io('http://localhost:3001');
-    
-    // Set up event handlers
     setupSocketEvents();
-    
-    // Add reset seed button to UI
     addResetSeedButton();
-    
     console.log('Connecting to multiplayer server...');
+}
+
+// Helper function to update chunk metadata
+function updateChunkMetadata(chunkKey, updates) {
+    if (!gameState.chunkMetadata) {
+        gameState.chunkMetadata = {};
+    }
+    
+    if (!gameState.chunkMetadata[chunkKey]) {
+        gameState.chunkMetadata[chunkKey] = {};
+    }
+    
+    Object.assign(gameState.chunkMetadata[chunkKey], {
+        ...updates,
+        lastUpdated: Date.now()
+    });
+}
+
+// Helper function to process chunk data
+function processChunkData(data) {
+    const chunkKey = `${data.chunkX},${data.chunkY}`;
+    
+    // If server-generated or new chunk, use server's version
+    if (data.serverGenerated || !gameState.chunks[chunkKey]) {
+        gameState.chunks[chunkKey] = data.data;
+        updateChunkMetadata(chunkKey, {
+            loadedFromServer: true,
+            loadedAt: Date.now()
+        });
+        return;
+    }
+    
+    // For existing chunks, only update differences
+    let hasChanges = false;
+    const chunk = gameState.chunks[chunkKey];
+    
+    for (let y = 0; y < data.data.length; y++) {
+        for (let x = 0; x < data.data[y].length; x++) {
+            if (y === 'metadata' || x === 'metadata') continue;
+            
+            if (data.data[y][x] !== chunk[y][x]) {
+                chunk[y][x] = data.data[y][x];
+                hasChanges = true;
+            }
+        }
+    }
+    
+    if (hasChanges) {
+        updateChunkMetadata(chunkKey, {
+            updatedFromServer: true
+        });
+    }
+}
+
+// Helper function to process block updates
+function processBlockUpdate(data) {
+    const blockKey = `${data.x},${data.y}`;
+    const now = Date.now();
+    const lastUpdate = recentBlockUpdates.get(blockKey);
+    
+    // Skip if update is too recent
+    if (lastUpdate && (now - lastUpdate <= BLOCK_UPDATE_COOLDOWN)) {
+        return;
+    }
+    
+    recentBlockUpdates.set(blockKey, now);
+    
+    const worldX = Math.floor(data.x / TILE_SIZE);
+    const worldY = Math.floor(data.y / TILE_SIZE);
+    
+    // Update tile
+    setTile(worldX, worldY, data.tileType, false);
+    
+    // Create particles for other players' actions
+    if (data.playerId !== socket.id && 
+        data.originalTileType !== undefined && 
+        data.originalTileType !== TILE_TYPES.AIR &&
+        typeof createParticles === 'function') {
+        
+        const particleX = worldX * TILE_SIZE + TILE_SIZE / 2;
+        const particleY = worldY * TILE_SIZE + TILE_SIZE / 2;
+        const particleColor = getTileColor(data.originalTileType);
+        createParticles(particleX, particleY, particleColor, 20);
+    }
 }
 
 // Set up socket event handlers
 function setupSocketEvents() {
-    // Handle connection
     socket.on('connect', () => {
         console.log('Connected to server with ID:', socket.id);
         isConnectedToServer = true;
     });
     
-    // Handle initialization data from server
     socket.on('initialize', (data) => {
-        console.log('Received initialization data from server');
-        console.log('Player ID:', data.id);
-        console.log('Other players:', data.players);
+        console.log('Received initialization data');
         
-        // Store player ID
         playerId = data.id;
-        
-        // Store other players
-        otherPlayers = data.players;
-        
-        // Remove self from other players
+        otherPlayers = { ...data.players };
         delete otherPlayers[playerId];
         
-        console.log('Other players after removing self:', otherPlayers);
-        
-        // Set world seed from server (ensure it's a number)
+        // Update game state
         gameState.worldSeed = Number(data.worldSeed);
-        console.log('World seed received from server:', gameState.worldSeed, 'Type:', typeof gameState.worldSeed);
-        
-        // Set terrain heights from server
         gameState.terrainHeights = data.terrainHeights;
-        
-        // Set biome map from server
         gameState.biomeMap = data.biomeMap;
         
-        // Initialize biomes if needed
         if (!gameState.biomeTypes) {
             initializeBiomes();
         }
         
-        // Request chunks around player
         requestInitialChunks();
-        
-        // Show player ID on screen
         showPlayerInfo();
-        
-        // Show notification
         showNotification('Connected to persistent world');
     });
     
-    // Handle new player joining
     socket.on('playerJoined', (player) => {
-        console.log('New player joined:', player.id);
-        console.log('Player data:', player);
-        
-        // Add new player to other players
         otherPlayers[player.id] = player;
-        
-        console.log('Updated other players:', otherPlayers);
-        
-        // Show notification
         showNotification(`Player ${player.id.substring(0, 5)}... joined`);
     });
     
-    // Handle player movement
     socket.on('playerMoved', (data) => {
-        // Update other player position
         if (otherPlayers[data.id]) {
-            otherPlayers[data.id].x = data.x;
-            otherPlayers[data.id].y = data.y;
-            otherPlayers[data.id].direction = data.direction;
+            Object.assign(otherPlayers[data.id], {
+                x: data.x,
+                y: data.y,
+                direction: data.direction
+            });
         }
     });
     
-    // Handle player leaving
     socket.on('playerLeft', (playerId) => {
-        console.log('Player left:', playerId);
-        
-        // Remove player from other players
         delete otherPlayers[playerId];
-        
-        // Show notification
         showNotification(`Player ${playerId.substring(0, 5)}... left`);
     });
     
-    // Handle chunk data from server
-    socket.on('chunkData', (data) => {
-        // Store chunk data
-        const chunkKey = `${data.chunkX},${data.chunkY}`;
-        
-        // If this is a server-generated chunk or we don't have this chunk yet, use the server's version
-        if (data.serverGenerated || !gameState.chunks[chunkKey]) {
-            gameState.chunks[chunkKey] = data.data;
-            
-            // Mark this chunk as loaded from server
-            if (!gameState.chunkMetadata) {
-                gameState.chunkMetadata = {};
-            }
-            
-            if (!gameState.chunkMetadata[chunkKey]) {
-                gameState.chunkMetadata[chunkKey] = {};
-            }
-            
-            gameState.chunkMetadata[chunkKey].loadedFromServer = true;
-            gameState.chunkMetadata[chunkKey].loadedAt = Date.now();
-        } else {
-            // For chunks we already have, only update if there are differences
-            // This helps with chunks that were modified locally before server data arrived
-            let hasChanges = false;
-            
-            // Check for differences and update only if needed
-            for (let y = 0; y < data.data.length; y++) {
-                for (let x = 0; x < data.data[y].length; x++) {
-                    // Skip metadata
-                    if (y === 'metadata' || x === 'metadata') continue;
-                    
-                    // If server data differs from client data, update it
-                    if (data.data[y][x] !== gameState.chunks[chunkKey][y][x]) {
-                        gameState.chunks[chunkKey][y][x] = data.data[y][x];
-                        hasChanges = true;
-                    }
-                }
-            }
-            
-            // If we made changes, mark the chunk as updated
-            if (hasChanges) {
-                if (!gameState.chunkMetadata) {
-                    gameState.chunkMetadata = {};
-                }
-                
-                if (!gameState.chunkMetadata[chunkKey]) {
-                    gameState.chunkMetadata[chunkKey] = {};
-                }
-                
-                gameState.chunkMetadata[chunkKey].updatedFromServer = true;
-                gameState.chunkMetadata[chunkKey].lastUpdated = Date.now();
-            }
-        }
-        
-        gameState.loadedChunks.add(chunkKey);
-    });
+    socket.on('chunkData', processChunkData);
+    socket.on('blockUpdate', processBlockUpdate);
     
-    // Handle block updates from other players
-    socket.on('blockUpdate', (data) => {
-        // Create a unique key for this block position
-        const blockKey = `${data.x},${data.y}`;
-        
-        // Check if we've recently processed an update for this block
-        const now = Date.now();
-        const lastUpdate = recentBlockUpdates.get(blockKey);
-        
-        // Only process if it's been at least 500ms since the last update for this block
-        // or if this is the first update for this block
-        if (!lastUpdate || (now - lastUpdate > 500)) {
-            // Record this update time
-            recentBlockUpdates.set(blockKey, now);
-            
-            // Update block in world
-            const worldX = Math.floor(data.x / TILE_SIZE);
-            const worldY = Math.floor(data.y / TILE_SIZE);
-            
-            // Check if this update originated from the current player
-            if (data.playerId === socket.id) {
-                // Just update the tile without creating particles again
-                setTile(worldX, worldY, data.tileType, false); // Pass false to prevent sending update back to server
-            } else {
-                // Update tile and create particles for other players' actions
-                setTile(worldX, worldY, data.tileType, false);
-                
-                // If we have the original tile type, add it to the player's inventory
-                if (data.originalTileType !== undefined && data.originalTileType !== TILE_TYPES.AIR) {
-                    // Use the improved particle system from game.js
-                    if (typeof createParticles === 'function') {
-                        // Get the center of the tile
-                        const particleX = worldX * TILE_SIZE + TILE_SIZE / 2;
-                        const particleY = worldY * TILE_SIZE + TILE_SIZE / 2;
-                        const particleColor = getTileColor(data.originalTileType);
-                        
-                        // Create particles with the improved system
-                        createParticles(particleX, particleY, particleColor, 20);
-                    }
-                }
-            }
-        }
-    });
-    
-    // Handle player inventory updates
     socket.on('playerInventoryUpdated', (data) => {
-        // Update other player's inventory
         if (otherPlayers[data.id]) {
             otherPlayers[data.id].inventory = data.inventory;
         }
     });
     
-    // Handle disconnection
     socket.on('disconnect', () => {
         console.log('Disconnected from server');
         isConnectedToServer = false;
         showNotification('Disconnected from server');
     });
     
-    // Handle world reset
     socket.on('worldReset', (data) => {
-        console.log('Received world reset notification');
-        
-        // Update world seed
         gameState.worldSeed = Number(data.worldSeed);
-        console.log('New world seed:', gameState.worldSeed);
-        
-        // Update terrain heights
         gameState.terrainHeights = data.terrainHeights;
-        
-        // Update biome map
         gameState.biomeMap = data.biomeMap;
-        
-        // Clear all loaded chunks
         gameState.chunks = {};
-        gameState.loadedChunks = new Set();
+        gameState.loadedChunks.clear();
         
-        if (gameState.chunkMetadata) {
-            gameState.chunkMetadata = {};
+        if (!gameState.biomeTypes) {
+            initializeBiomes();
         }
-                
-        // Request chunks around player
-        requestInitialChunks();
         
-        // Show notification
-        showNotification('World has been reset with seed: ' + gameState.worldSeed);
+        showNotification('World has been reset');
+        requestInitialChunks();
     });
-    
-    // Start regular updates of player info
-    startPlayerInfoUpdates();
 }
 
 // Function to start regular updates of player info

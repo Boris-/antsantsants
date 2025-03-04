@@ -1,87 +1,100 @@
+// Tile color mapping
+const TILE_COLORS = {
+    [TILE_TYPES.DIRT]: '#8B4513',
+    [TILE_TYPES.STONE]: '#808080',
+    [TILE_TYPES.GRASS]: '#228B22',
+    [TILE_TYPES.SAND]: '#F0E68C',
+    [TILE_TYPES.ORE]: '#FFD700',
+    [TILE_TYPES.BEDROCK]: '#1C1C1C',
+    [TILE_TYPES.COAL]: '#2C2C2C',
+    [TILE_TYPES.IRON]: '#C0C0C0',
+    [TILE_TYPES.GOLD]: '#DAA520',
+    [TILE_TYPES.DIAMOND]: '#00FFFF',
+    [TILE_TYPES.WOOD]: '#8B4513',
+    [TILE_TYPES.LEAVES]: '#006400',
+    [TILE_TYPES.BUSH]: '#228B22',
+    [TILE_TYPES.FLOWER]: '#FF69B4',
+    [TILE_TYPES.TALL_GRASS]: '#32CD32',
+    [TILE_TYPES.CACTUS]: '#2E8B57',
+    [TILE_TYPES.SNOW]: '#FFFAFA',
+    [TILE_TYPES.MUSHROOM]: '#B22222',
+    [TILE_TYPES.WATER]: '#4169E1'
+};
+
 // Draw world
 function drawWorld() {
+    const { ctx, canvas, camera, zoom, isZooming } = gameState;
+    
     // Draw background sky
-    gameState.ctx.fillStyle = '#87CEEB';
-    gameState.ctx.fillRect(0, 0, gameState.canvas.width, gameState.canvas.height);
+    ctx.fillStyle = '#87CEEB';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     // Calculate visible chunks based on zoom level
-    const startChunkX = Math.floor(gameState.camera.x / TILE_SIZE / CHUNK_SIZE);
-    const endChunkX = Math.ceil((gameState.camera.x + gameState.canvas.width / gameState.zoom) / TILE_SIZE / CHUNK_SIZE);
-    const startChunkY = Math.floor(gameState.camera.y / TILE_SIZE / CHUNK_SIZE);
-    const endChunkY = Math.ceil((gameState.camera.y + gameState.canvas.height / gameState.zoom) / TILE_SIZE / CHUNK_SIZE);
+    const startChunkX = Math.floor(camera.x / TILE_SIZE / CHUNK_SIZE);
+    const endChunkX = Math.ceil((camera.x + canvas.width / zoom) / TILE_SIZE / CHUNK_SIZE);
+    const startChunkY = Math.floor(camera.y / TILE_SIZE / CHUNK_SIZE);
+    const endChunkY = Math.ceil((camera.y + canvas.height / zoom) / TILE_SIZE / CHUNK_SIZE);
     
     // Save context state before transformations
-    gameState.ctx.save();
+    ctx.save();
     
-    // Apply zoom transformation
-    gameState.ctx.scale(gameState.zoom, gameState.zoom);
-    
-    // Apply camera transformation - translate to negative camera position
-    gameState.ctx.translate(-gameState.camera.x, -gameState.camera.y);
+    // Apply camera and zoom transformations
+    ctx.scale(zoom, zoom);
+    ctx.translate(-camera.x, -camera.y);
     
     // Draw visible chunks
+    const maxChunkX = Math.ceil(WORLD_WIDTH / CHUNK_SIZE);
+    const maxChunkY = Math.ceil(WORLD_HEIGHT / CHUNK_SIZE);
+    
     for (let chunkY = startChunkY; chunkY <= endChunkY; chunkY++) {
+        if (chunkY < 0 || chunkY >= maxChunkY) continue;
+        
         for (let chunkX = startChunkX; chunkX <= endChunkX; chunkX++) {
-            if (chunkX >= 0 && chunkX < Math.ceil(WORLD_WIDTH / CHUNK_SIZE) && 
-                chunkY >= 0 && chunkY < Math.ceil(WORLD_HEIGHT / CHUNK_SIZE)) {
-                drawChunk(chunkX, chunkY);
-            }
+            if (chunkX < 0 || chunkX >= maxChunkX) continue;
+            drawChunk(chunkX, chunkY);
         }
     }
     
-    // Draw player directly in world coordinates
+    // Draw entities
     drawPlayerDirect();
-    
-    // Draw enemies directly in world coordinates
     drawEnemiesDirect();
     
-    // Draw particles directly in world coordinates, but only if not zooming
-    if (!gameState.isZooming && typeof drawParticlesDirect === 'function') {
+    // Draw particles if not zooming
+    if (!isZooming && typeof drawParticlesDirect === 'function') {
         drawParticlesDirect();
     }
     
-    // Restore context to original state
-    gameState.ctx.restore();
+    // Restore context
+    ctx.restore();
     
-    // Load chunks that are coming into view
+    // Handle chunk loading/unloading
     loadChunksInView(startChunkX, endChunkX, startChunkY, endChunkY);
-    
-    // Unload chunks that are far from view to save memory
     unloadDistantChunks(startChunkX, endChunkX, startChunkY, endChunkY);
     
-    // Draw minimap (draw last so it appears on top)
+    // Draw UI elements last
     drawMinimap();
 }
 
 // Draw a single chunk
 function drawChunk(chunkX, chunkY) {
     const chunkKey = `${chunkX},${chunkY}`;
-    
-    // Check if chunk exists in gameState.chunks
-    if (!gameState.chunks[chunkKey]) {
-        // Generate chunk if not loaded
-        generateChunk(chunkX, chunkY);
-    }
-    
-    const chunk = gameState.chunks[chunkKey];
+    const chunk = gameState.chunks[chunkKey] || generateChunk(chunkX, chunkY);
     
     // Calculate world position of chunk
     const worldX = chunkX * CHUNK_SIZE * TILE_SIZE;
     const worldY = chunkY * CHUNK_SIZE * TILE_SIZE;
     
-    // Check if chunk is visible on screen (rough check)
-    // Convert world coordinates to screen coordinates
+    // Check if chunk is visible (screen space calculation)
     const screenX = (worldX - gameState.camera.x) * gameState.zoom;
     const screenY = (worldY - gameState.camera.y) * gameState.zoom;
     const chunkScreenSize = CHUNK_SIZE * TILE_SIZE * gameState.zoom;
     
-    // Skip rendering if chunk is completely outside the viewport
-    if (screenX > gameState.canvas.width || screenY > gameState.canvas.height || 
-        screenX + chunkScreenSize < 0 || screenY + chunkScreenSize < 0) {
+    if (!isOnScreen(screenX, screenY, chunkScreenSize, chunkScreenSize)) {
         return;
     }
     
-    // Draw each tile in the chunk
+    // Draw visible tiles
+    const ctx = gameState.ctx;
     for (let localY = 0; localY < CHUNK_SIZE; localY++) {
         for (let localX = 0; localX < CHUNK_SIZE; localX++) {
             const tileType = chunk[localY][localX];
@@ -90,430 +103,117 @@ function drawChunk(chunkX, chunkY) {
             const tileWorldX = worldX + localX * TILE_SIZE;
             const tileWorldY = worldY + localY * TILE_SIZE;
             
-            // Skip rendering if tile is completely outside the viewport
+            // Skip if tile is not visible
             const tileScreenX = (tileWorldX - gameState.camera.x) * gameState.zoom;
             const tileScreenY = (tileWorldY - gameState.camera.y) * gameState.zoom;
             const tileScreenSize = TILE_SIZE * gameState.zoom;
             
-            if (tileScreenX > gameState.canvas.width || tileScreenY > gameState.canvas.height || 
-                tileScreenX + tileScreenSize < 0 || tileScreenY + tileScreenSize < 0) {
+            if (!isOnScreen(tileScreenX, tileScreenY, tileScreenSize, tileScreenSize)) {
                 continue;
             }
             
-            // Determine color based on tile type
-            switch (tileType) {
-                case TILE_TYPES.DIRT:
-                    gameState.ctx.fillStyle = '#8B4513';
-                    break;
-                case TILE_TYPES.STONE:
-                    gameState.ctx.fillStyle = '#808080';
-                    break;
-                case TILE_TYPES.GRASS:
-                    gameState.ctx.fillStyle = '#228B22';
-                    break;
-                case TILE_TYPES.SAND:
-                    gameState.ctx.fillStyle = '#F0E68C';
-                    break;
-                case TILE_TYPES.ORE:
-                    gameState.ctx.fillStyle = '#FFD700'; // Gold color for ore
-                    break;
-                case TILE_TYPES.BEDROCK:
-                    gameState.ctx.fillStyle = '#1C1C1C';
-                    break;
-                case TILE_TYPES.COAL:
-                    gameState.ctx.fillStyle = '#2C2C2C'; // Dark gray for coal
-                    break;
-                case TILE_TYPES.IRON:
-                    gameState.ctx.fillStyle = '#C0C0C0'; // Silver color for iron
-                    break;
-                case TILE_TYPES.GOLD:
-                    gameState.ctx.fillStyle = '#DAA520'; // Golden rod for gold
-                    break;
-                case TILE_TYPES.DIAMOND:
-                    gameState.ctx.fillStyle = '#00FFFF'; // Cyan for diamond
-                    break;
-                case TILE_TYPES.WOOD:
-                    gameState.ctx.fillStyle = '#8B4513'; // Brown for wood
-                    break;
-                case TILE_TYPES.LEAVES:
-                    gameState.ctx.fillStyle = '#006400'; // Dark green for leaves
-                    break;
-                case TILE_TYPES.BUSH:
-                    gameState.ctx.fillStyle = '#228B22'; // Forest green for bushes
-                    break;
-                case TILE_TYPES.FLOWER:
-                    gameState.ctx.fillStyle = '#FF69B4'; // Pink for flowers
-                    break;
-                case TILE_TYPES.TALL_GRASS:
-                    gameState.ctx.fillStyle = '#32CD32'; // Lime green for tall grass
-                    break;
-                case TILE_TYPES.CACTUS:
-                    gameState.ctx.fillStyle = '#2E8B57'; // Sea green for cactus
-                    break;
-                case TILE_TYPES.SNOW:
-                    gameState.ctx.fillStyle = '#FFFAFA'; // Snow white
-                    break;
-                case TILE_TYPES.MUSHROOM:
-                    gameState.ctx.fillStyle = '#B22222'; // Firebrick red for mushrooms
-                    break;
-                case TILE_TYPES.WATER:
-                    gameState.ctx.fillStyle = '#4169E1'; // Royal blue for water
-                    break;
-                default:
-                    gameState.ctx.fillStyle = '#FF00FF'; // Error/debug color
+            // Draw tile with color from mapping
+            ctx.fillStyle = TILE_COLORS[tileType] || '#FF00FF';
+            ctx.fillRect(tileWorldX, tileWorldY, TILE_SIZE, TILE_SIZE);
+            
+            // Add tile details if zoomed in enough
+            if (gameState.zoom >= 1) {
+                addTileDetail(chunkX * CHUNK_SIZE + localX, chunkY * CHUNK_SIZE + localY, tileType, tileWorldX, tileWorldY);
             }
-            
-            // Draw the tile
-            gameState.ctx.fillRect(tileWorldX, tileWorldY, TILE_SIZE, TILE_SIZE);
-            
-            // Add some texture/detail to tiles
-            addTileDetail(chunkX * CHUNK_SIZE + localX, chunkY * CHUNK_SIZE + localY, tileType, tileWorldX, tileWorldY);
         }
     }
 }
 
+// Helper function to check if an element is visible on screen
+function isOnScreen(x, y, width, height) {
+    return !(x > gameState.canvas.width || y > gameState.canvas.height || 
+             x + width < 0 || y + height < 0);
+}
+
 // Add visual details to tiles based on type
 function addTileDetail(worldX, worldY, tileType, tileWorldX, tileWorldY) {
-    // Add details based on tile type
+    const ctx = gameState.ctx;
+    
     switch (tileType) {
         case TILE_TYPES.DIRT:
-            // Add some small dots for texture
-            gameState.ctx.fillStyle = '#6B3300';
-            for (let i = 0; i < 5; i++) {
-                const dotX = tileWorldX + Math.random() * TILE_SIZE;
-                const dotY = tileWorldY + Math.random() * TILE_SIZE;
-                const dotSize = 1 + Math.random() * 2;
-                gameState.ctx.fillRect(dotX, dotY, dotSize, dotSize);
-            }
+            addRandomDots(ctx, tileWorldX, tileWorldY, '#6B3300', 5, 1, 2);
             break;
             
         case TILE_TYPES.STONE:
-            // Add some cracks or lines
-            gameState.ctx.strokeStyle = '#707070';
-            gameState.ctx.lineWidth = 1;
-            gameState.ctx.beginPath();
-            gameState.ctx.moveTo(tileWorldX + TILE_SIZE * 0.2, tileWorldY + TILE_SIZE * 0.3);
-            gameState.ctx.lineTo(tileWorldX + TILE_SIZE * 0.5, tileWorldY + TILE_SIZE * 0.7);
-            gameState.ctx.stroke();
+            addCracks(ctx, tileWorldX, tileWorldY, '#707070');
             break;
             
         case TILE_TYPES.GRASS:
-            // Add grass blades on top
-            gameState.ctx.fillStyle = '#1A6B1A';
-            for (let i = 0; i < 4; i++) {
-                const bladeX = tileWorldX + 4 + i * 8;
-                const bladeHeight = 2 + Math.random() * 4;
-                gameState.ctx.fillRect(bladeX, tileWorldY, 2, bladeHeight);
-            }
+            addGrassBlades(ctx, tileWorldX, tileWorldY);
             break;
             
         case TILE_TYPES.ORE:
-            // Add sparkles to ore
-            gameState.ctx.fillStyle = '#FFFF00';
-            for (let i = 0; i < 3; i++) {
-                const sparkX = tileWorldX + 5 + Math.random() * (TILE_SIZE - 10);
-                const sparkY = tileWorldY + 5 + Math.random() * (TILE_SIZE - 10);
-                const sparkSize = 2 + Math.random() * 2;
-                gameState.ctx.fillRect(sparkX, sparkY, sparkSize, sparkSize);
-            }
+        case TILE_TYPES.GOLD:
+            addSparkles(ctx, tileWorldX, tileWorldY, '#FFFF00', 3);
             break;
             
         case TILE_TYPES.COAL:
-            // Add black specks
-            gameState.ctx.fillStyle = '#000000';
-            for (let i = 0; i < 4; i++) {
-                const speckX = tileWorldX + 5 + Math.random() * (TILE_SIZE - 10);
-                const speckY = tileWorldY + 5 + Math.random() * (TILE_SIZE - 10);
-                const speckSize = 2 + Math.random() * 3;
-                gameState.ctx.fillRect(speckX, speckY, speckSize, speckSize);
-            }
+            addRandomDots(ctx, tileWorldX, tileWorldY, '#000000', 4, 2, 3);
             break;
             
         case TILE_TYPES.IRON:
-            // Add metallic streaks
-            gameState.ctx.strokeStyle = '#A0A0A0';
-            gameState.ctx.lineWidth = 1;
-            for (let i = 0; i < 2; i++) {
-                const startX = tileWorldX + Math.random() * TILE_SIZE;
-                const startY = tileWorldY + Math.random() * TILE_SIZE;
-                const endX = startX + (Math.random() * 10) - 5;
-                const endY = startY + (Math.random() * 10) - 5;
-                
-                gameState.ctx.beginPath();
-                gameState.ctx.moveTo(startX, startY);
-                gameState.ctx.lineTo(endX, endY);
-                gameState.ctx.stroke();
-            }
+            addMetallicStreaks(ctx, tileWorldX, tileWorldY);
             break;
-            
-        case TILE_TYPES.GOLD:
-            // Add golden sparkles
-            gameState.ctx.fillStyle = '#FFFF33';
-            for (let i = 0; i < 5; i++) {
-                const sparkX = tileWorldX + 3 + Math.random() * (TILE_SIZE - 6);
-                const sparkY = tileWorldY + 3 + Math.random() * (TILE_SIZE - 6);
-                const sparkSize = 1 + Math.random() * 2;
-                gameState.ctx.fillRect(sparkX, sparkY, sparkSize, sparkSize);
-            }
-            break;
-            
-        case TILE_TYPES.DIAMOND:
-            // Add diamond sparkles
-            gameState.ctx.fillStyle = '#FFFFFF';
-            for (let i = 0; i < 4; i++) {
-                const sparkX = tileWorldX + 5 + Math.random() * (TILE_SIZE - 10);
-                const sparkY = tileWorldY + 5 + Math.random() * (TILE_SIZE - 10);
-                
-                // Draw a small diamond shape
-                gameState.ctx.beginPath();
-                gameState.ctx.moveTo(sparkX, sparkY - 2);
-                gameState.ctx.lineTo(sparkX + 2, sparkY);
-                gameState.ctx.lineTo(sparkX, sparkY + 2);
-                gameState.ctx.lineTo(sparkX - 2, sparkY);
-                gameState.ctx.closePath();
-                gameState.ctx.fill();
-            }
-            break;
-            
-        case TILE_TYPES.WOOD:
-            // Add wood grain texture
-            gameState.ctx.strokeStyle = '#6B4226';
-            gameState.ctx.lineWidth = 1;
-            
-            // Vertical grain lines
-            for (let i = 0; i < 3; i++) {
-                const lineX = tileWorldX + 8 + i * 8;
-                
-                gameState.ctx.beginPath();
-                gameState.ctx.moveTo(lineX, tileWorldY);
-                gameState.ctx.lineTo(lineX, tileWorldY + TILE_SIZE);
-                gameState.ctx.stroke();
-            }
-            
-            // Horizontal rings
-            for (let i = 0; i < 2; i++) {
-                const ringY = tileWorldY + 10 + i * 12;
-                
-                gameState.ctx.beginPath();
-                gameState.ctx.moveTo(tileWorldX, ringY);
-                gameState.ctx.lineTo(tileWorldX + TILE_SIZE, ringY);
-                gameState.ctx.stroke();
-            }
-            break;
-            
-        case TILE_TYPES.LEAVES:
-            // Add leaf texture with small dots
-            gameState.ctx.fillStyle = '#004D00';
-            for (let i = 0; i < 8; i++) {
-                const dotX = tileWorldX + Math.random() * TILE_SIZE;
-                const dotY = tileWorldY + Math.random() * TILE_SIZE;
-                const dotSize = 1 + Math.random() * 2;
-                gameState.ctx.fillRect(dotX, dotY, dotSize, dotSize);
-            }
-            
-            // Add some lighter spots to represent light through leaves
-            gameState.ctx.fillStyle = '#00FF00';
-            for (let i = 0; i < 3; i++) {
-                const spotX = tileWorldX + Math.random() * TILE_SIZE;
-                const spotY = tileWorldY + Math.random() * TILE_SIZE;
-                const spotSize = 1 + Math.random() * 1.5;
-                gameState.ctx.fillRect(spotX, spotY, spotSize, spotSize);
-            }
-            break;
-            
-        case TILE_TYPES.BUSH:
-            // Add bush texture (similar to leaves but more rounded)
-            gameState.ctx.fillStyle = '#004D00';
-            
-            // Draw a more rounded shape for the bush
-            gameState.ctx.beginPath();
-            gameState.ctx.arc(tileWorldX + TILE_SIZE / 2, tileWorldY + TILE_SIZE / 2, 
-                             TILE_SIZE / 2 - 2, 0, Math.PI * 2);
-            gameState.ctx.fill();
-            
-            // Add some lighter spots
-            gameState.ctx.fillStyle = '#00FF00';
-            for (let i = 0; i < 4; i++) {
-                const spotX = tileWorldX + 5 + Math.random() * (TILE_SIZE - 10);
-                const spotY = tileWorldY + 5 + Math.random() * (TILE_SIZE - 10);
-                const spotSize = 1 + Math.random() * 2;
-                gameState.ctx.fillRect(spotX, spotY, spotSize, spotSize);
-            }
-            break;
-            
-        case TILE_TYPES.FLOWER:
-            // Draw flower stem
-            gameState.ctx.fillStyle = '#228B22';
-            gameState.ctx.fillRect(
-                tileWorldX + TILE_SIZE / 2 - 1,
-                tileWorldY + TILE_SIZE / 2,
-                2,
-                TILE_SIZE / 2
-            );
-            
-            // Draw flower petals
-            gameState.ctx.fillStyle = '#FF69B4';
-            const centerX = tileWorldX + TILE_SIZE / 2;
-            const centerY = tileWorldY + TILE_SIZE / 3;
-            const petalSize = TILE_SIZE / 5;
-            
-            // Draw 5 petals
-            for (let i = 0; i < 5; i++) {
-                const angle = (i / 5) * Math.PI * 2;
-                const petalX = centerX + Math.cos(angle) * petalSize;
-                const petalY = centerY + Math.sin(angle) * petalSize;
-                
-                gameState.ctx.beginPath();
-                gameState.ctx.arc(petalX, petalY, petalSize, 0, Math.PI * 2);
-                gameState.ctx.fill();
-            }
-            
-            // Draw flower center
-            gameState.ctx.fillStyle = '#FFFF00';
-            gameState.ctx.beginPath();
-            gameState.ctx.arc(centerX, centerY, petalSize / 2, 0, Math.PI * 2);
-            gameState.ctx.fill();
-            break;
-            
-        case TILE_TYPES.TALL_GRASS:
-            // Draw tall grass blades
-            gameState.ctx.fillStyle = '#32CD32';
-            
-            for (let i = 0; i < 6; i++) {
-                const baseX = tileWorldX + 3 + i * 5;
-                const height = TILE_SIZE * 0.7 + Math.random() * (TILE_SIZE * 0.3);
-                const width = 2 + Math.random() * 2;
-                
-                // Draw a blade of grass (slightly curved)
-                gameState.ctx.beginPath();
-                gameState.ctx.moveTo(baseX, tileWorldY + TILE_SIZE);
-                
-                // Control point for curve
-                const cpX = baseX + (Math.random() * 6 - 3);
-                const cpY = tileWorldY + TILE_SIZE - height / 2;
-                
-                // End point
-                const endX = baseX + (Math.random() * 8 - 4);
-                const endY = tileWorldY + TILE_SIZE - height;
-                
-                gameState.ctx.quadraticCurveTo(cpX, cpY, endX, endY);
-                gameState.ctx.lineTo(endX + width, endY);
-                gameState.ctx.quadraticCurveTo(cpX + width, cpY, baseX + width, tileWorldY + TILE_SIZE);
-                gameState.ctx.closePath();
-                gameState.ctx.fill();
-            }
-            break;
-            
-        case TILE_TYPES.CACTUS:
-            // Draw cactus body
-            gameState.ctx.fillStyle = '#2E8B57';
-            
-            // Main cactus body
-            gameState.ctx.fillRect(
-                tileWorldX + TILE_SIZE / 4,
-                tileWorldY,
-                TILE_SIZE / 2,
-                TILE_SIZE
-            );
-            
-            // Add cactus arms (50% chance for each arm)
-            if (Math.random() > 0.5) {
-                // Left arm
-                gameState.ctx.fillRect(
-                    tileWorldX,
-                    tileWorldY + TILE_SIZE / 3,
-                    TILE_SIZE / 4,
-                    TILE_SIZE / 4
-                );
-            }
-            
-            if (Math.random() > 0.5) {
-                // Right arm
-                gameState.ctx.fillRect(
-                    tileWorldX + TILE_SIZE * 3/4,
-                    tileWorldY + TILE_SIZE / 2,
-                    TILE_SIZE / 4,
-                    TILE_SIZE / 4
-                );
-            }
-            
-            // Add cactus spines
-            gameState.ctx.fillStyle = '#FFFFFF';
-            for (let i = 0; i < 8; i++) {
-                const spineX = tileWorldX + TILE_SIZE / 4 + (i % 2 === 0 ? -1 : TILE_SIZE / 2);
-                const spineY = tileWorldY + 5 + i * (TILE_SIZE / 8);
-                
-                gameState.ctx.fillRect(spineX, spineY, 1, 2);
-            }
-            break;
-            
-        case TILE_TYPES.SNOW:
-            // Add snow texture with small sparkles
-            gameState.ctx.fillStyle = '#FFFFFF';
-            for (let i = 0; i < 5; i++) {
-                const sparkX = tileWorldX + Math.random() * TILE_SIZE;
-                const sparkY = tileWorldY + Math.random() * TILE_SIZE;
-                
-                gameState.ctx.beginPath();
-                gameState.ctx.arc(sparkX, sparkY, 1, 0, Math.PI * 2);
-                gameState.ctx.fill();
-            }
-            break;
-            
-        case TILE_TYPES.MUSHROOM:
-            // Draw mushroom stem
-            gameState.ctx.fillStyle = '#F5DEB3'; // Wheat color
-            gameState.ctx.fillRect(
-                tileWorldX + TILE_SIZE / 2 - 2,
-                tileWorldY + TILE_SIZE / 2,
-                4,
-                TILE_SIZE / 2
-            );
-            
-            // Draw mushroom cap
-            gameState.ctx.fillStyle = '#B22222'; // Firebrick red
-            gameState.ctx.beginPath();
-            gameState.ctx.arc(
-                tileWorldX + TILE_SIZE / 2,
-                tileWorldY + TILE_SIZE / 3,
-                TILE_SIZE / 3,
-                0, Math.PI, true
-            );
-            gameState.ctx.fill();
-            
-            // Add mushroom spots
-            gameState.ctx.fillStyle = '#FFFFFF';
-            for (let i = 0; i < 4; i++) {
-                const spotX = tileWorldX + TILE_SIZE / 3 + Math.random() * (TILE_SIZE / 3);
-                const spotY = tileWorldY + TILE_SIZE / 6 + Math.random() * (TILE_SIZE / 6);
-                const spotSize = 1 + Math.random() * 2;
-                
-                gameState.ctx.beginPath();
-                gameState.ctx.arc(spotX, spotY, spotSize, 0, Math.PI * 2);
-                gameState.ctx.fill();
-            }
-            break;
-            
-        case TILE_TYPES.WATER:
-            // Add water ripple effect
-            gameState.ctx.strokeStyle = '#87CEEB'; // Sky blue
-            gameState.ctx.lineWidth = 1;
-            
-            for (let i = 0; i < 3; i++) {
-                const y = tileWorldY + 8 + i * 8;
-                
-                gameState.ctx.beginPath();
-                gameState.ctx.moveTo(tileWorldX, y);
-                
-                // Create a wavy line
-                for (let x = 0; x <= TILE_SIZE; x += 4) {
-                    const waveHeight = Math.sin(x / 4 + (worldX + worldY) / 10) * 2;
-                    gameState.ctx.lineTo(tileWorldX + x, y + waveHeight);
-                }
-                
-                gameState.ctx.stroke();
-            }
-            break;
+    }
+}
+
+// Helper functions for tile details
+function addRandomDots(ctx, x, y, color, count, minSize, maxSize) {
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+        const dotX = x + 5 + Math.random() * (TILE_SIZE - 10);
+        const dotY = y + 5 + Math.random() * (TILE_SIZE - 10);
+        const dotSize = minSize + Math.random() * (maxSize - minSize);
+        ctx.fillRect(dotX, dotY, dotSize, dotSize);
+    }
+}
+
+function addCracks(ctx, x, y, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + TILE_SIZE * 0.2, y + TILE_SIZE * 0.3);
+    ctx.lineTo(x + TILE_SIZE * 0.5, y + TILE_SIZE * 0.7);
+    ctx.stroke();
+}
+
+function addGrassBlades(ctx, x, y) {
+    ctx.fillStyle = '#1A6B1A';
+    for (let i = 0; i < 4; i++) {
+        const bladeX = x + 4 + i * 8;
+        const bladeHeight = 2 + Math.random() * 4;
+        ctx.fillRect(bladeX, y, 2, bladeHeight);
+    }
+}
+
+function addSparkles(ctx, x, y, color, count) {
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+        const sparkX = x + 5 + Math.random() * (TILE_SIZE - 10);
+        const sparkY = y + 5 + Math.random() * (TILE_SIZE - 10);
+        const sparkSize = 2 + Math.random() * 2;
+        ctx.fillRect(sparkX, sparkY, sparkSize, sparkSize);
+    }
+}
+
+function addMetallicStreaks(ctx, x, y) {
+    ctx.strokeStyle = '#A0A0A0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 2; i++) {
+        const startX = x + Math.random() * TILE_SIZE;
+        const startY = y + Math.random() * TILE_SIZE;
+        const endX = startX + (Math.random() * 10) - 5;
+        const endY = startY + (Math.random() * 10) - 5;
+        
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
     }
 }
 

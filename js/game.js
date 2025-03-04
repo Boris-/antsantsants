@@ -12,12 +12,12 @@ function cleanupRecentlyDugBlocks() {
     const now = Date.now();
     const expirationTime = 10000; // 10 seconds
     
-    // Remove entries older than expirationTime
-    for (const [key, timestamp] of recentlyDugBlocks.entries()) {
-        if (now - timestamp > expirationTime) {
-            recentlyDugBlocks.delete(key);
-        }
-    }
+    // Use more efficient array-based cleanup
+    const keysToDelete = Array.from(recentlyDugBlocks.entries())
+        .filter(([_, timestamp]) => now - timestamp > expirationTime)
+        .map(([key]) => key);
+    
+    keysToDelete.forEach(key => recentlyDugBlocks.delete(key));
 }
 
 // Run cleanup every 30 seconds
@@ -27,17 +27,19 @@ setInterval(cleanupRecentlyDugBlocks, 30000);
 function setupMultiplayerReferences() {
     console.log("Setting up multiplayer references...");
     
-    // Check if multiplayer functions exist
-    if (typeof window.requestChunk === 'function') {
+    // Use object destructuring for cleaner code
+    const { requestChunk, sendBlockDig } = window;
+    
+    if (typeof requestChunk === 'function') {
         console.log("Found requestChunk function");
-        _requestChunk = window.requestChunk;
+        _requestChunk = requestChunk;
     } else {
         console.warn("requestChunk function not found");
     }
     
-    if (typeof window.sendBlockDig === 'function') {
+    if (typeof sendBlockDig === 'function') {
         console.log("Found sendBlockDig function");
-        _sendBlockDig = window.sendBlockDig;
+        _sendBlockDig = sendBlockDig;
     } else {
         console.warn("sendBlockDig function not found");
     }
@@ -58,16 +60,11 @@ function gameLoop(timestamp) {
     const deltaTime = timestamp - gameState.lastFrameTime;
     gameState.lastFrameTime = timestamp;
     
-    // Calculate FPS
+    // Calculate FPS using exponential moving average
     if (deltaTime > 0) {
-        // Use a moving average for smoother FPS display
         const fps = 1000 / deltaTime;
-        if (!gameState.fps) {
-            gameState.fps = fps;
-        } else {
-            // Smooth the FPS value (80% previous, 20% current)
-            gameState.fps = gameState.fps * 0.8 + fps * 0.2;
-        }
+        const SMOOTHING = 0.8;
+        gameState.fps = gameState.fps ? gameState.fps * SMOOTHING + fps * (1 - SMOOTHING) : fps;
     }
     
     // Update game state
@@ -80,32 +77,31 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
+// Constants for player properties
+const PLAYER_CONSTANTS = {
+    WIDTH_RATIO: 0.6,  // 60% of tile size
+    HEIGHT_RATIO: 0.5, // 50% of tile size
+    DIG_RANGE: 3,      // tiles
+    SPEED: 2           // pixels per frame
+};
+
 // Update game state
 function updateGame(deltaTime) {
-    // Update player size to match a smaller hitbox (60% of a tile for width, 50% for height)
-    gameState.player.width = TILE_SIZE * 0.6;
-    gameState.player.height = TILE_SIZE * 0.5;
+    // Update player properties using constants
+    const { WIDTH_RATIO, HEIGHT_RATIO, DIG_RANGE, SPEED } = PLAYER_CONSTANTS;
+    gameState.player.width = TILE_SIZE * WIDTH_RATIO;
+    gameState.player.height = TILE_SIZE * HEIGHT_RATIO;
+    gameState.player.digRange = TILE_SIZE * DIG_RANGE;
+    gameState.player.speed = SPEED;
     
-    // Set appropriate digging range for the small ant
-    gameState.player.digRange = TILE_SIZE * 3;
-    
-    // Set appropriate movement speed for the small ant
-    gameState.player.speed = 2;
-    
-    // Update player movement
+    // Update game components
     handlePlayerMovement();
-    
-    // Handle digging
     handleDigging();
-    
-    // Update camera
     updateCamera();
-    
-    // Update particles
     updateParticles(deltaTime);
     
-    // Send player position to server (for multiplayer)
-    if (socket && socket.connected && gameState.lastPositionUpdate + 50 < Date.now()) {
+    // Handle multiplayer updates
+    if (socket?.connected && Date.now() - gameState.lastPositionUpdate > 50) {
         sendPlayerPosition();
         gameState.lastPositionUpdate = Date.now();
     }
@@ -116,43 +112,42 @@ function updateGame(deltaTime) {
 
 // Update camera
 function updateCamera() {
-    // Calculate center of the screen
-    const centerX = gameState.canvas.width / 2;
-    const centerY = gameState.canvas.height / 2;
+    const { width, height } = gameState.canvas;
+    const { zoom } = gameState;
+    const centerX = width / 2;
+    const centerY = height / 2;
     
-    // Set camera target to follow player
-    gameState.camera.targetX = gameState.player.x + (gameState.player.width / 2) - (centerX / gameState.zoom);
-    gameState.camera.targetY = gameState.player.y + (gameState.player.height / 2) - (centerY / gameState.zoom);
+    // Calculate target position
+    const targetX = gameState.player.x + (gameState.player.width / 2) - (centerX / zoom);
+    const targetY = gameState.player.y + (gameState.player.height / 2) - (centerY / zoom);
     
-    // Smoothly move camera towards target
-    gameState.camera.x += (gameState.camera.targetX - gameState.camera.x) * 0.1;
-    gameState.camera.y += (gameState.camera.targetY - gameState.camera.y) * 0.1;
+    // Smoothly interpolate camera position
+    const CAMERA_SMOOTHING = 0.1;
+    gameState.camera.x += (targetX - gameState.camera.x) * CAMERA_SMOOTHING;
+    gameState.camera.y += (targetY - gameState.camera.y) * CAMERA_SMOOTHING;
 }
 
 // Update UI elements
 function updateUI() {
-    // Make sure gameState exists
     if (!window.gameState) {
         console.error("Game state not initialized in updateUI!");
         return;
     }
     
-    // Call the specific UI update functions directly to avoid circular references
-    if (typeof window.updateHealthDisplay === 'function') {
-        window.updateHealthDisplay();
-    }
-    if (typeof window.updateScoreDisplay === 'function') {
-        window.updateScoreDisplay();
-    }
-    if (typeof window.updateInventoryDisplay === 'function') {
-        window.updateInventoryDisplay();
-    }
-    if (typeof window.updateBiomeDisplay === 'function') {
-        window.updateBiomeDisplay();
-    }
-    if (typeof window.updateDebugInfo === 'function') {
-        window.updateDebugInfo();
-    }
+    // Use array of UI update functions for cleaner code
+    const uiUpdaters = [
+        'updateHealthDisplay',
+        'updateScoreDisplay',
+        'updateInventoryDisplay',
+        'updateBiomeDisplay',
+        'updateDebugInfo'
+    ];
+    
+    uiUpdaters.forEach(updater => {
+        if (typeof window[updater] === 'function') {
+            window[updater]();
+        }
+    });
 }
 
 // Check if we should auto-save
@@ -202,46 +197,58 @@ window.addEventListener('load', () => {
     }, 10000);
 });
 
+// Tile type checks using Set for better performance
+const SOLID_TILES = new Set([
+    TILE_TYPES.DIRT,
+    TILE_TYPES.STONE,
+    TILE_TYPES.BEDROCK,
+    TILE_TYPES.COAL,
+    TILE_TYPES.IRON,
+    TILE_TYPES.GOLD,
+    TILE_TYPES.DIAMOND
+]);
+
+const COLLECTIBLE_TILES = new Set([
+    TILE_TYPES.COAL,
+    TILE_TYPES.IRON,
+    TILE_TYPES.GOLD,
+    TILE_TYPES.DIAMOND,
+    TILE_TYPES.WOOD,
+    TILE_TYPES.LEAVES,
+    TILE_TYPES.FLOWER,
+    TILE_TYPES.MUSHROOM
+]);
+
 // Check if a tile is solid (cannot be passed through)
 function isSolid(tileType) {
-    return tileType !== TILE_TYPES.AIR && 
-           tileType !== TILE_TYPES.LEAVES &&
-           tileType !== TILE_TYPES.FLOWER &&
-           tileType !== TILE_TYPES.TALL_GRASS &&
-           tileType !== TILE_TYPES.MUSHROOM;
+    return SOLID_TILES.has(tileType);
 }
 
 // Check if a tile can be dug
 function isDiggable(tileType) {
-    return tileType !== TILE_TYPES.AIR && 
-           tileType !== TILE_TYPES.BEDROCK;
+    return tileType !== TILE_TYPES.AIR && tileType !== TILE_TYPES.BEDROCK;
 }
 
 // Check if a tile is collectible
 function isCollectible(tileType) {
-    return tileType === TILE_TYPES.COAL ||
-           tileType === TILE_TYPES.IRON ||
-           tileType === TILE_TYPES.GOLD ||
-           tileType === TILE_TYPES.DIAMOND ||
-           tileType === TILE_TYPES.WOOD ||
-           tileType === TILE_TYPES.LEAVES ||
-           tileType === TILE_TYPES.FLOWER ||
-           tileType === TILE_TYPES.MUSHROOM;
+    return COLLECTIBLE_TILES.has(tileType);
 }
+
+// Score values mapping
+const SCORE_VALUES = {
+    [TILE_TYPES.COAL]: 1,
+    [TILE_TYPES.IRON]: 3,
+    [TILE_TYPES.GOLD]: 5,
+    [TILE_TYPES.DIAMOND]: 10,
+    [TILE_TYPES.WOOD]: 1,
+    [TILE_TYPES.LEAVES]: 1,
+    [TILE_TYPES.FLOWER]: 2,
+    [TILE_TYPES.MUSHROOM]: 3
+};
 
 // Get score value for a tile type
 function getScoreValue(tileType) {
-    switch (tileType) {
-        case TILE_TYPES.COAL: return 1;
-        case TILE_TYPES.IRON: return 3;
-        case TILE_TYPES.GOLD: return 5;
-        case TILE_TYPES.DIAMOND: return 10;
-        case TILE_TYPES.WOOD: return 1;
-        case TILE_TYPES.LEAVES: return 1;
-        case TILE_TYPES.FLOWER: return 2;
-        case TILE_TYPES.MUSHROOM: return 3;
-        default: return 0;
-    }
+    return SCORE_VALUES[tileType] || 0;
 }
 
 // Get display name for a tile type
