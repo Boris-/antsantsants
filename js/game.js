@@ -11,10 +11,7 @@ const BLOCK_DIG_THROTTLE_MS = 50; // Reduced from 100ms to 50ms for snappier res
 
 // Throttled version of sendBlockDig
 function throttledSendBlockDig(x, y, tileType) {
-    // Apply the change locally immediately for instant feedback
-    setTile(x, y, tileType, false);
-    
-    // Store this update in the pending map for server sync
+    // Store this update in the pending map, overwriting any previous update for the same coordinates
     pendingBlockDigs.set(`${x},${y}`, { x, y, tileType });
     
     // If no timer is running, start one
@@ -24,16 +21,16 @@ function throttledSendBlockDig(x, y, tileType) {
             const updates = Array.from(pendingBlockDigs.values());
             
             // Process in batches if there are many updates
-            const BATCH_SIZE = 15; // Increased from 10 to 15
+            const BATCH_SIZE = 15; // Increased batch size
             for (let i = 0; i < updates.length; i += BATCH_SIZE) {
                 const batch = updates.slice(i, i + BATCH_SIZE);
                 
-                // Reduced delay between batches
+                // Small delay between batches to avoid network congestion
                 setTimeout(() => {
                     batch.forEach(update => {
                         _sendBlockDig(update.x, update.y, update.tileType);
                     });
-                }, Math.floor(i / BATCH_SIZE) * 10); // Reduced from 20ms to 10ms
+                }, Math.floor(i / BATCH_SIZE) * 10); // Reduced inter-batch delay from 20ms to 10ms
             }
             
             // Clear the pending updates and timer
@@ -49,14 +46,14 @@ const recentlyDugBlocks = new Map();
 // Cleanup function for recentlyDugBlocks map
 function cleanupRecentlyDugBlocks() {
     const now = Date.now();
-    const expirationTime = 5000; // Reduced from 10 seconds to 5 seconds
+    const expirationTime = 2000; // Reduced from 5 seconds to 2 seconds for better cleanup
     
     // Skip if the map is empty
     if (recentlyDugBlocks.size === 0) return;
     
     // Only perform cleanup if the map has grown beyond a certain size
     // to avoid unnecessary processing
-    if (recentlyDugBlocks.size > 100) {
+    if (recentlyDugBlocks.size > 75) { // Reduced threshold from 100 to 75
         const keysToDelete = [];
         
         // Use for...of loop which is faster than Array.from().filter().map()
@@ -68,21 +65,23 @@ function cleanupRecentlyDugBlocks() {
         
         // Batch delete operations
         if (keysToDelete.length > 0) {
-            keysToDelete.forEach(key => recentlyDugBlocks.delete(key));
+            for (const key of keysToDelete) {
+                recentlyDugBlocks.delete(key);
+            }
         }
     }
 }
 
 // Run cleanup more frequently with a dynamic interval
-const CLEANUP_INTERVAL_MIN = 5000;  // 5 seconds
-const CLEANUP_INTERVAL_MAX = 30000; // 30 seconds
+const CLEANUP_INTERVAL_MIN = 2000;  // Reduced from 5 seconds to 2 seconds
+const CLEANUP_INTERVAL_MAX = 15000; // Reduced from 30 seconds to 15 seconds
 
 // Adjust cleanup interval based on activity
 function adjustCleanupInterval() {
     // If we have many recently dug blocks, run cleanup more frequently
-    const intervalMs = recentlyDugBlocks.size > 50 
+    const intervalMs = recentlyDugBlocks.size > 40  // Threshold reduced from 50 to 40
         ? CLEANUP_INTERVAL_MIN 
-        : Math.min(CLEANUP_INTERVAL_MAX, CLEANUP_INTERVAL_MIN * (1 + Math.floor(recentlyDugBlocks.size / 10)));
+        : Math.min(CLEANUP_INTERVAL_MAX, CLEANUP_INTERVAL_MIN * (1 + Math.floor(recentlyDugBlocks.size / 15)));
     
     return intervalMs;
 }
@@ -578,6 +577,7 @@ function checkCollision(x, y) {
 function handleDigging() {
     // Check if mouse is down
     if (gameState.mouseDown) {
+        // Only log when the mouse state has changed
         if (!gameState.wasMouseDown) {
             gameState.wasMouseDown = true;
         }
@@ -590,11 +590,9 @@ function handleDigging() {
         const tileX = Math.floor(mouseWorldX / TILE_SIZE);
         const tileY = Math.floor(mouseWorldY / TILE_SIZE);
         
-        // Track coordinate changes for optimization
+        // Only track coordinate changes, not every frame
         const tileKey = `${tileX},${tileY}`;
-        const isSameTile = gameState.lastDigTile === tileKey;
-        
-        if (!isSameTile) {
+        if (gameState.lastDigTile !== tileKey) {
             gameState.lastDigTile = tileKey;
             // Reset cooldown when moving to a new tile for snappier response when changing tiles
             gameState.lastDigCooldown = 0;
@@ -622,11 +620,8 @@ function handleDigging() {
                 const now = Date.now();
                 const lastDug = recentlyDugBlocks.get(blockKey);
                 
-                // Reduced cooldown from 500ms to 150ms for much snappier digging
-                const digCooldown = 150;
-                
                 // Only process digging if cooldown has passed
-                if (!lastDug || (now - lastDug > digCooldown)) {
+                if (!lastDug || (now - lastDug > 250)) {
                     // Record this dig time
                     recentlyDugBlocks.set(blockKey, now);
                     
@@ -638,7 +633,7 @@ function handleDigging() {
                     const particleY = tileY * TILE_SIZE + TILE_SIZE / 2;
                     const particleColor = getTileColor(currentTile);
                     
-                    // Create particles (keeping as-is since user said particles are fine)
+                    // Create particles - reduce number for performance
                     createParticles(particleX, particleY, particleColor, 10);
                     
                     // Check if tile is collectible
@@ -665,28 +660,14 @@ function handleDigging() {
                                 break;
                         }
                         
-                        // Batch UI updates with requestAnimationFrame
-                        if (!gameState.pendingUIUpdate) {
-                            gameState.pendingUIUpdate = true;
-                            requestAnimationFrame(() => {
-                                // Update inventory display
-                                if (typeof window.updateInventoryDisplay === 'function') {
-                                    window.updateInventoryDisplay();
-                                }
-                                
-                                // Update score display
-                                if (typeof window.updateScoreDisplay === 'function') {
-                                    window.updateScoreDisplay();
-                                }
-                                gameState.pendingUIUpdate = false;
-                            });
-                        }
-                        
                         // Add score
                         gameState.score += getScoreValue(currentTile);
                     }
                     
-                    // Send to server for multiplayer sync
+                    // Update the tile locally immediately for responsiveness
+                    setTile(tileX, tileY, TILE_TYPES.AIR, false);
+                    
+                    // Then queue the server update if in multiplayer mode
                     if (typeof _sendBlockDig === 'function') {
                         throttledSendBlockDig(tileX, tileY, TILE_TYPES.AIR);
                     }
@@ -1635,19 +1616,29 @@ function setTile(x, y, tileType, sendToServer = true) {
     const localX = x % CHUNK_SIZE;
     const localY = y % CHUNK_SIZE;
     
-    // Skip if tile is already the desired type
-    if (chunk[localY][localX] === tileType) {
+    // Check if chunk exists
+    if (!gameState.chunks[chunkKey]) {
+        // Request chunk if multiplayer is enabled and we're trying to send to server
+        // This prevents infinite loops of requesting chunks
+        if (sendToServer && typeof _requestChunk === 'function') {
+            _requestChunk(chunkX, chunkY);
+        }
+        
+        return; // Can't set tile in non-existent chunk
+    }
+    
+    // Check if tile is already the desired type (skip unnecessary updates)
+    if (gameState.chunks[chunkKey][localY][localX] === tileType) {
         return; // No change needed
     }
     
-    // Set tile in chunk (direct array access is faster)
-    chunk[localY][localX] = tileType;
-    
-    // Mark as having unsaved changes
-    gameState.hasUnsavedChanges = true;
+    // Set tile in chunk
+    gameState.chunks[chunkKey][localY][localX] = tileType;
     
     // Send to server if requested and multiplayer is enabled
+    // We now expect throttledSendBlockDig to handle batching, so we don't use it directly here
     if (sendToServer && typeof _sendBlockDig === 'function') {
+        // We use the throttled version in handleDigging, but direct here for single updates
         _sendBlockDig(x, y, tileType);
     }
 }
