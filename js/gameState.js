@@ -13,7 +13,7 @@ const gameState = {
     // Day/Night cycle properties
     dayNightCycle: {
         time: 0, // 0-1 representing time of day (0 = midnight, 0.5 = noon)
-        dayLength: 1200000, // 20 minutes in milliseconds for a full day cycle
+        dayLength: 1200000, // Default value, will be overridden by server
         lastUpdate: Date.now(),
         enabled: true // Ensure day/night cycle is enabled by default
     },
@@ -427,7 +427,7 @@ function updateDayNightCycle(timestamp) {
         // Initialize the day/night cycle if it doesn't exist
         gameState.dayNightCycle = {
             time: 0.5, // Start at noon
-            dayLength: 1200000, // 20 minutes for a full day
+            dayLength: 1200000, // Will be overridden by server sync
             lastUpdate: timestamp || Date.now(),
             enabled: true
         };

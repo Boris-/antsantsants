@@ -62,7 +62,7 @@ function initializeGameState() {
         gameTime: 0,
         dayNightCycle: {
             time: 0,
-            dayLength: 600, // 10 minutes per day
+            // dayLength is set by the server during sync
             isDay: true
         },
         sounds: {
@@ -158,75 +158,6 @@ function spawnPlayer() {
     updateCamera();
 }
 
-// Set up event listeners
-/*
-function setupEventListeners() {
-    // Keyboard events
-    window.addEventListener('keydown', (e) => {
-        window.gameState.keys[e.key] = true;
-        
-        // Toggle debug options
-        if (e.key === 'f') {
-            window.gameState.debug.showFPS = !window.gameState.debug.showFPS;
-        }
-        if (e.key === 'c') {
-            window.gameState.debug.showChunkBorders = !window.gameState.debug.showChunkBorders;
-        }
-        if (e.key === 'g') {
-            window.gameState.debug.godMode = !window.gameState.debug.godMode;
-            if (window.gameState.debug.godMode) {
-                window.gameState.player.health = window.gameState.player.maxHealth;
-            }
-        }
-        
-        // Zoom controls
-        if (e.key === '=' || e.key === '+') {
-            window.gameState.zoom = Math.min(2, window.gameState.zoom + 0.1);
-        }
-        if (e.key === '-' || e.key === '_') {
-            window.gameState.zoom = Math.max(0.5, window.gameState.zoom - 0.1);
-        }
-        
-        // Save/load game
-        if (e.key === 's' && e.ctrlKey) {
-            e.preventDefault();
-            saveGame();
-        }
-        if (e.key === 'l' && e.ctrlKey) {
-            e.preventDefault();
-            loadGame();
-        }
-    });
-    
-    window.addEventListener('keyup', (e) => {
-        window.gameState.keys[e.key] = false;
-    });
-    
-    // Mouse events
-    window.gameState.canvas.addEventListener('mousemove', (e) => {
-        window.gameState.mouse.x = e.clientX;
-        window.gameState.mouse.y = e.clientY;
-    });
-    
-    window.gameState.canvas.addEventListener('mousedown', (e) => {
-        if (e.button === 0) {
-            window.gameState.mouse.leftPressed = true;
-        }
-    });
-    
-    window.gameState.canvas.addEventListener('mouseup', (e) => {
-        if (e.button === 0) {
-            window.gameState.mouse.leftPressed = false;
-        }
-    });
-    
-    // Window resize
-    window.addEventListener('resize', () => {
-        window.gameState.canvas.width = window.innerWidth;
-        window.gameState.canvas.height = window.innerHeight;
-    });
-}
-*/
 
 // Play a sound
 function playSound(soundName) {
