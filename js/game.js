@@ -98,31 +98,25 @@ const PLAYER_CONSTANTS = {
 
 // Update game state
 function updateGame(deltaTime) {
-    // Update player properties using constants
-    const { WIDTH_RATIO, HEIGHT_RATIO, DIG_RANGE, SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE, 
-            PARACHUTE_DEPLOY_SPEED, PARACHUTE_FALL_SPEED, PARACHUTE_DRIFT, JUMP_DELAY, MIN_FALL_DISTANCE_FOR_PARACHUTE } = PLAYER_CONSTANTS;
-    gameState.player.width = TILE_SIZE * WIDTH_RATIO;
-    gameState.player.height = TILE_SIZE * HEIGHT_RATIO;
-    gameState.player.digRange = TILE_SIZE * DIG_RANGE;
-    gameState.player.speed = SPEED;
-    gameState.player.gravity = GRAVITY;
-    gameState.player.jumpForce = JUMP_FORCE;
-    gameState.player.maxFallSpeed = MAX_FALL_SPEED;
-    gameState.player.groundFriction = GROUND_FRICTION;
-    
-    // Update game components
+    // Update player
     handlePlayerMovement();
-    handleDigging();
+    
+    // Update camera
     updateCamera();
+    
+    // Update UI
+    updateUI();
+    
+    // Save periodically
+    checkAutoSave();
+    
+    // Update particles
     updateParticles(deltaTime);
     
-    // Handle multiplayer updates
-    if (socket?.connected && Date.now() - gameState.lastPositionUpdate > 50) {
-        sendPlayerPosition();
-        gameState.lastPositionUpdate = Date.now();
-    }
+    // Handle digging
+    handleDigging();
     
-    // Request new chunks if needed
+    // Check and request chunks
     checkAndRequestChunks();
 }
 
@@ -292,6 +286,7 @@ function getTileName(tileType) {
         case TILE_TYPES.SNOW: return "Snow";
         case TILE_TYPES.MUSHROOM: return "Mushroom";
         case TILE_TYPES.WATER: return "Water";
+        case TILE_TYPES.CLOUD: return "Cloud";
         default: return "Unknown";
     }
 }

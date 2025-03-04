@@ -18,7 +18,8 @@ const TILE_COLORS = {
     [TILE_TYPES.CACTUS]: '#2E8B57',
     [TILE_TYPES.SNOW]: '#FFFAFA',
     [TILE_TYPES.MUSHROOM]: '#B22222',
-    [TILE_TYPES.WATER]: '#4169E1'
+    [TILE_TYPES.WATER]: '#4169E1',
+    [TILE_TYPES.CLOUD]: 'rgba(255, 255, 255, 0.7)' // Semi-transparent white for clouds
 };
 
 // Draw world
@@ -113,8 +114,17 @@ function drawChunk(chunkX, chunkY) {
             }
             
             // Draw tile with color from mapping
-            ctx.fillStyle = TILE_COLORS[tileType] || '#FF00FF';
-            ctx.fillRect(tileWorldX, tileWorldY, TILE_SIZE, TILE_SIZE);
+            if (tileType === TILE_TYPES.CLOUD) {
+                // Set globalAlpha for semi-transparent clouds
+                const originalAlpha = ctx.globalAlpha;
+                ctx.globalAlpha = 0.7;
+                ctx.fillStyle = TILE_COLORS[tileType] || '#FF00FF';
+                ctx.fillRect(tileWorldX, tileWorldY, TILE_SIZE, TILE_SIZE);
+                ctx.globalAlpha = originalAlpha;
+            } else {
+                ctx.fillStyle = TILE_COLORS[tileType] || '#FF00FF';
+                ctx.fillRect(tileWorldX, tileWorldY, TILE_SIZE, TILE_SIZE);
+            }
             
             // Add tile details if zoomed in enough
             if (gameState.zoom >= 1) {
@@ -158,6 +168,10 @@ function addTileDetail(worldX, worldY, tileType, tileWorldX, tileWorldY) {
             
         case TILE_TYPES.IRON:
             addMetallicStreaks(ctx, tileWorldX, tileWorldY);
+            break;
+            
+        case TILE_TYPES.CLOUD:
+            addCloudWisps(ctx, tileWorldX, tileWorldY);
             break;
     }
 }
@@ -215,6 +229,35 @@ function addMetallicStreaks(ctx, x, y) {
         ctx.lineTo(endX, endY);
         ctx.stroke();
     }
+}
+
+// Add wispy details to cloud blocks
+function addCloudWisps(ctx, x, y) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    
+    // Add random curved wisps
+    const wispsCount = 3 + Math.floor(Math.random() * 3);
+    
+    for (let i = 0; i < wispsCount; i++) {
+        const offsetX = 5 + Math.random() * (TILE_SIZE - 10);
+        const offsetY = 5 + Math.random() * (TILE_SIZE - 10);
+        const size = 3 + Math.random() * 4;
+        
+        ctx.beginPath();
+        ctx.arc(x + offsetX, y + offsetY, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // Add some brightness to the center
+    const grd = ctx.createRadialGradient(
+        x + TILE_SIZE/2, y + TILE_SIZE/2, 2, 
+        x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/2
+    );
+    grd.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+    grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = grd;
+    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 }
 
 // Load chunks that are coming into view

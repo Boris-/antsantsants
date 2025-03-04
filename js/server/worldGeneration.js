@@ -29,7 +29,8 @@ const TILE_TYPES = {
     CACTUS: 16,   // Desert cactus
     SNOW: 17,     // Snow block
     MUSHROOM: 18, // Forest mushroom
-    WATER: 19     // Water block
+    WATER: 19,     // Water block
+    CLOUD: 20     // Cloud block
 };
 
 // Biome types
@@ -596,6 +597,24 @@ function generateChunk(chunkX, chunkY, gameState) {
                 } else {
                     // Above ground - air
                     tileType = TILE_TYPES.AIR;
+                    
+                    // Generate clouds above a certain height
+                    // We'll make clouds appear all the way from above terrain to max height
+                    const cloudMinHeight = 15; // Minimum blocks above terrain
+                    
+                    // Check if we're above the minimum height above terrain
+                    if (worldY <= terrainHeight - cloudMinHeight) {
+                        
+                        // Use 2D noise for natural-looking clouds
+                        // No animation - using fixed coordinates
+                        const cloudNoise = getRandomForPosition(gameState.worldSeed + 1000, worldX / 3, worldY / 2);
+                        
+                        // Only place cloud blocks if noise value is above threshold
+                        // This creates patchy, natural-looking clouds
+                        if (cloudNoise > 0.75 && cloudNoise < 0.92) {
+                            tileType = TILE_TYPES.CLOUD;
+                        }
+                    }
                 }
                 
                 // Bedrock at bottom of world

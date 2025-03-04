@@ -34,7 +34,8 @@ const TILE_TYPES = {
     CACTUS: 16,   // Desert cactus
     SNOW: 17,     // Snow block
     MUSHROOM: 18, // Forest mushroom
-    WATER: 19     // Water block
+    WATER: 19,    // Water block
+    CLOUD: 20     // Cloud block
 };
 
 // Biome types (for easier reference)
