@@ -634,14 +634,16 @@ function handleDigging() {
                         }
                     }
                     
-                    // Send block dig to server if multiplayer is enabled
+                    // Update locally first for immediate feedback
+                    setTile(tileX, tileY, TILE_TYPES.AIR, false);
+                    
+                    // Send block dig to server asynchronously if multiplayer is enabled
                     if (typeof _sendBlockDig === 'function') {
-                        console.log(`Sending block dig to server: (${tileX}, ${tileY}), tile type: ${TILE_TYPES.AIR}`);
-                        _sendBlockDig(tileX, tileY, TILE_TYPES.AIR);
-                    } else {
-                        console.log(`No _sendBlockDig function available, updating tile locally`);
-                        // If not in multiplayer mode, update the tile locally
-                        setTile(tileX, tileY, TILE_TYPES.AIR);
+                        // Use requestAnimationFrame to batch updates
+                        requestAnimationFrame(() => {
+                            console.log(`Sending block dig to server: (${tileX}, ${tileY}), tile type: ${TILE_TYPES.AIR}`);
+                            _sendBlockDig(tileX, tileY, TILE_TYPES.AIR);
+                        });
                     }
                 } else {
                     // Reduce frequency of "too soon" messages
