@@ -5,6 +5,7 @@ const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
 const { createNoise2D } = require('simplex-noise');
+const crypto = require('crypto');
 
 // Track server start time
 const serverStartTime = Date.now();
@@ -28,12 +29,15 @@ const adminAuth = (req, res, next) => {
     const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
     const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
     
-    // Set your admin credentials here
-    const ADMIN_USERNAME = 'admin';
-    const ADMIN_PASSWORD = 'antsantsants'; // Change this to a secure password in production
+    // Create a hash of the expected password
+    // The password hash below corresponds to "ANTant22!"
+    const ADMIN_PASSWORD_HASH = '4c6ec96777ecc53d26da45e0258385e2b3ad20349e7e1e2312b9cf44aa6a49e3';
     
-    // Verify credentials
-    if (login && password && login === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    // Hash the provided password for comparison
+    const hashProvided = crypto.createHash('sha256').update(password || '').digest('hex');
+    
+    // Verify password only (no username required)
+    if (password && hashProvided === ADMIN_PASSWORD_HASH) {
         return next();
     }
     
