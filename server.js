@@ -4,6 +4,10 @@ const socketIO = require('socket.io');
 const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
+const { createNoise2D } = require('simplex-noise');
+
+// Track server start time
+const serverStartTime = Date.now();
 
 // Create Express app
 const app = express();
@@ -18,8 +22,39 @@ const io = socketIO(server, {
 // Enable CORS
 app.use(cors());
 
+// Basic authentication middleware for admin panel
+const adminAuth = (req, res, next) => {
+    // Parse login and password from headers
+    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+    
+    // Set your admin credentials here
+    const ADMIN_USERNAME = 'admin';
+    const ADMIN_PASSWORD = 'antsantsants'; // Change this to a secure password in production
+    
+    // Verify credentials
+    if (login && password && login === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        return next();
+    }
+    
+    // Authentication failed
+    res.set('WWW-Authenticate', 'Basic realm="Admin Panel"');
+    res.status(401).send('Authentication required');
+};
+
 // Serve static files from the current directory
 app.use(express.static(__dirname));
+
+// Admin panel route with authentication
+app.get('/admin', adminAuth, (req, res) => {
+    fs.readFile(path.join(__dirname, 'admin.html'), 'utf8', (err, content) => {
+        if (err) {
+            console.error('Error reading admin template:', err);
+            return res.status(500).send('Server Error');
+        }
+        res.send(content);
+    });
+});
 
 // World save file path
 const WORLD_SAVE_PATH = path.join(__dirname, 'world_save.json');
@@ -202,13 +237,20 @@ setInterval(() => {
 io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
     
-    // Add player to game state
+    // Initialize player
     gameState.players[socket.id] = {
         id: socket.id,
         x: 0,
         y: 0,
+        color: getRandomColor(),
         direction: 'right',
-        inventory: {}
+        score: 0,
+        inventory: {}, // Ensure inventory is initialized
+        health: 100,
+        lastSeen: Date.now(),
+        active: true,
+        joinedAt: Date.now(),
+        username: `Player-${socket.id.substr(0, 4)}`
     };
     
     // Send initialization data to client
@@ -227,13 +269,14 @@ io.on('connection', (socket) => {
     // Broadcast new player to all other clients
     socket.broadcast.emit('playerJoined', gameState.players[socket.id]);
     
-    // Handle player movement
+    // Handle player position update
     socket.on('playerMove', (data) => {
-        // Update player position
         if (gameState.players[socket.id]) {
             gameState.players[socket.id].x = data.x;
             gameState.players[socket.id].y = data.y;
             gameState.players[socket.id].direction = data.direction;
+            gameState.players[socket.id].lastSeen = Date.now();
+            gameState.players[socket.id].active = true;
             
             // Broadcast player movement to all other clients
             socket.broadcast.emit('playerMoved', {
@@ -283,17 +326,37 @@ io.on('connection', (socket) => {
         console.log('World reset complete');
     });
     
-    // Handle inventory updates
-    socket.on('inventoryUpdate', (data) => {
+    // Handle inventory update
+    socket.on('updateInventory', (data) => {
         if (gameState.players[socket.id]) {
-            // Update player's inventory
-            gameState.players[socket.id].inventory = data.inventory;
-            
-            // Broadcast inventory update to all other players
-            socket.broadcast.emit('playerInventoryUpdated', {
-                id: socket.id,
-                inventory: data.inventory
-            });
+            gameState.players[socket.id].inventory = data.inventory || {};
+            gameState.players[socket.id].lastSeen = Date.now();
+        }
+    });
+    
+    // Handle score update
+    socket.on('updateScore', (data) => {
+        if (gameState.players[socket.id] && typeof data.score === 'number') {
+            gameState.players[socket.id].score = data.score;
+            gameState.players[socket.id].lastSeen = Date.now();
+        }
+    });
+    
+    // Handle health update
+    socket.on('updateHealth', (data) => {
+        if (gameState.players[socket.id] && typeof data.health === 'number') {
+            gameState.players[socket.id].health = data.health;
+            gameState.players[socket.id].lastSeen = Date.now();
+        }
+    });
+    
+    // Handle username update
+    socket.on('updateUsername', (data) => {
+        if (gameState.players[socket.id] && data.username) {
+            // Sanitize the username - remove any potentially dangerous characters
+            const sanitizedUsername = data.username.replace(/[^\w\s-]/gi, '').substring(0, 20);
+            gameState.players[socket.id].username = sanitizedUsername || `Player-${socket.id.substr(0, 4)}`;
+            gameState.players[socket.id].lastSeen = Date.now();
         }
     });
     
@@ -414,11 +477,19 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('Player disconnected:', socket.id);
         
-        // Remove player from game state
-        delete gameState.players[socket.id];
+        // Record last position and time before removing player
+        const disconnectedPlayer = gameState.players[socket.id];
+        if (disconnectedPlayer) {
+            // Notify other clients about the disconnection
+            socket.broadcast.emit('playerLeft', {
+                id: socket.id,
+                x: disconnectedPlayer.x,
+                y: disconnectedPlayer.y
+            });
+        }
         
-        // Broadcast player left to all other players
-        io.emit('playerLeft', socket.id);
+        // Remove the player from game state
+        delete gameState.players[socket.id];
     });
     
     // Handle chunk saving from client
@@ -453,6 +524,72 @@ io.on('connection', (socket) => {
             gameState.worldMetadata.hasUnsavedChanges = true;
         }
     });
+
+    // Handle world data request (admin)
+    socket.on('getWorldData', () => {
+        console.log('Admin requested world data');
+        socket.emit('worldData', {
+            worldSeed: gameState.worldSeed,
+            chunks: gameState.chunks,
+            worldMetadata: gameState.worldMetadata,
+            dayNightCycle: gameState.dayNightCycle
+        });
+    });
+
+    // Handle player list request (admin)
+    socket.on('getPlayerList', () => {
+        console.log('Admin requested player list');
+        
+        // Update active status for all players
+        const now = Date.now();
+        let activePlayerCount = 0;
+        
+        // Process each player to update their status and count active players
+        Object.keys(gameState.players).forEach(playerId => {
+            const player = gameState.players[playerId];
+            
+            // Mark player as inactive if not seen in the last 10 seconds
+            if (now - (player.lastSeen || 0) > 10000) {
+                player.active = false;
+            } else {
+                player.active = true;
+                activePlayerCount++;
+            }
+            
+            // Calculate session duration
+            player.sessionDuration = now - (player.joinedAt || now);
+        });
+        
+        // Send enhanced player data to admin
+        socket.emit('playerList', {
+            players: gameState.players,
+            totalPlayers: Object.keys(gameState.players).length,
+            activePlayers: activePlayerCount,
+            serverStartTime: gameState.worldMetadata.createdAt
+        });
+    });
+
+    // Handle world map request (admin)
+    socket.on('getWorldMap', () => {
+        console.log('Admin requested world map');
+        
+        // Create a simplified terrain representation for the map
+        const mapSize = 100; // 100x100 grid
+        const terrainMap = generateSimplifiedTerrainMap(mapSize);
+        
+        socket.emit('worldMapData', {
+            terrain: terrainMap,
+            players: gameState.players,
+            scale: 10 // Scale factor for player positions
+        });
+    });
+
+    // Handle world save request (admin)
+    socket.on('saveWorld', () => {
+        console.log('Admin requested world save');
+        saveWorld();
+        socket.emit('worldSaved');
+    });
 });
 
 // Helper function to generate random color for players
@@ -470,6 +607,49 @@ function getRandomColor() {
         '#33FF33'  // Lime
     ];
     return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// Generate a simplified terrain map for admin view
+function generateSimplifiedTerrainMap(size) {
+    const map = [];
+    const seed = gameState.worldSeed;
+    const noise2D = createNoise2D(() => seed / 1000000);
+    
+    for (let y = 0; y < size; y++) {
+        const row = [];
+        for (let x = 0; x < size; x++) {
+            // Map coordinates to world coordinates
+            const worldX = (x - size/2) * 10;
+            const worldY = (y - size/2) * 10;
+            
+            // Generate terrain type based on noise
+            const elevation = (noise2D(worldX * 0.01, worldY * 0.01) + 1) / 2;
+            const moisture = (noise2D(worldX * 0.02 + 500, worldY * 0.02 + 500) + 1) / 2;
+            
+            // Determine terrain type
+            let terrainType;
+            if (elevation < 0.3) {
+                terrainType = 0; // Water
+            } else if (elevation < 0.4) {
+                terrainType = 1; // Sand
+            } else if (elevation < 0.7) {
+                if (moisture < 0.4) {
+                    terrainType = 2; // Grass
+                } else {
+                    terrainType = 3; // Forest
+                }
+            } else if (elevation < 0.85) {
+                terrainType = 4; // Mountain
+            } else {
+                terrainType = 5; // Snow
+            }
+            
+            row.push(terrainType);
+        }
+        map.push(row);
+    }
+    
+    return map;
 }
 
 // Initialize world before starting server

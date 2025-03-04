@@ -38,7 +38,6 @@ setInterval(cleanupRecentBlockUpdates, CLEANUP_INTERVAL);
 function initializeMultiplayer() {
     socket = io('http://144.91.69.122:3001/');
     setupSocketEvents();
-    addResetSeedButton();
     console.log('Connecting to multiplayer server...');
 }
 
@@ -709,51 +708,6 @@ window.resetWorldSeed = resetWorldSeed; // Export the reset function
 // Log that the functions have been exported
 console.log("Multiplayer functions exported to window object");
 
-// Add a reset seed button to the UI
-function addResetSeedButton() {
-    // Check if UI container exists
-    const uiContainer = document.getElementById('ui-container');
-    if (!uiContainer) {
-        console.error("UI container not found!");
-        return;
-    }
-    
-    // Check if button already exists
-    if (document.getElementById('reset-seed-button')) {
-        return;
-    }
-    
-    // Create button container
-    const buttonContainer = document.createElement('div');
-    buttonContainer.id = 'reset-seed-container';
-    buttonContainer.className = 'ui-element';
-    
-    // Create seed input
-    const seedInput = document.createElement('input');
-    seedInput.type = 'number';
-    seedInput.id = 'seed-input';
-    seedInput.placeholder = 'Enter seed (optional)';
-    seedInput.min = 0;
-    seedInput.max = 9999999;
-    
-    // Create reset button
-    const resetButton = document.createElement('button');
-    resetButton.id = 'reset-seed-button';
-    resetButton.textContent = 'Reset World';
-    resetButton.addEventListener('click', () => {
-        const seedValue = seedInput.value ? parseInt(seedInput.value) : undefined;
-        resetWorldSeed(seedValue);
-    });
-    
-    // Add elements to container
-    buttonContainer.appendChild(seedInput);
-    buttonContainer.appendChild(resetButton);
-    
-    // Add container to UI
-    uiContainer.appendChild(buttonContainer);
-    
-    console.log('Reset seed button added to UI');
-}
 
 // Function to request world seed reset
 function resetWorldSeed(seed) {

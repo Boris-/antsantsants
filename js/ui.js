@@ -50,46 +50,8 @@ function initializeUI() {
     const playerStatsDisplay = document.createElement('div');
     playerStatsDisplay.id = 'player-stats-display';
     playerStatsDisplay.className = 'ui-element';
-    document.body.appendChild(playerStatsDisplay);
+    uiContainer.appendChild(playerStatsDisplay);
     
-    // Create reset seed button container
-    const resetSeedContainer = document.createElement('div');
-    resetSeedContainer.id = 'reset-seed-container';
-    resetSeedContainer.className = 'ui-element';
-    
-    // Create seed input
-    const seedInput = document.createElement('input');
-    seedInput.type = 'number';
-    seedInput.id = 'seed-input';
-    seedInput.placeholder = 'Enter seed (optional)';
-    seedInput.min = 0;
-    seedInput.max = 9999999;
-    resetSeedContainer.appendChild(seedInput);
-    
-    // Create reset button
-    const resetButton = document.createElement('button');
-    resetButton.id = 'reset-seed-button';
-    resetButton.textContent = 'Reset World';
-    resetButton.addEventListener('click', () => {
-        if (typeof window.resetWorldSeed === 'function') {
-            const seedValue = seedInput.value ? parseInt(seedInput.value) : undefined;
-            window.resetWorldSeed(seedValue);
-        } else {
-            console.error('resetWorldSeed function not found!');
-            alert('Reset functionality not available. Please check the console for errors.');
-        }
-    });
-    resetSeedContainer.appendChild(resetButton);
-    
-    // Add reset seed container to UI
-    uiContainer.appendChild(resetSeedContainer);
-    
-    // Create debug info container (hidden by default)
-    const debugInfo = document.createElement('div');
-    debugInfo.id = 'debug-info';
-    debugInfo.className = 'ui-element';
-    debugInfo.style.display = 'none';
-    uiContainer.appendChild(debugInfo);
     
     // Initial UI update
     updateUI();

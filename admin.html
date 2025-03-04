@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ant Game - Admin Panel</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #2c2c2c;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        h1, h2 {
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+            color: #66aaff;
+        }
+        
+        .admin-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #333;
+            border-radius: 6px;
+        }
+        
+        button {
+            background-color: #4466cc;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            margin: 10px 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #5577dd;
+        }
+        
+        button.danger {
+            background-color: #cc4444;
+        }
+        
+        button.danger:hover {
+            background-color: #dd5555;
+        }
+        
+        input[type="text"], input[type="number"] {
+            padding: 8px;
+            margin: 5px;
+            background-color: #444;
+            border: 1px solid #555;
+            color: white;
+            border-radius: 4px;
+        }
+        
+        .status-panel {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .status-item {
+            padding: 10px;
+            background-color: #2a2a2a;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .status-value {
+            font-weight: bold;
+            color: #77ccff;
+        }
+        
+        .player-list-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 10px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+        
+        .player-list-container table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .player-list-container th,
+        .player-list-container td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #444;
+        }
+        
+        .player-list-container tr:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        
+        #world-map {
+            width: 100%;
+            height: 400px;
+            background-color: #222;
+            border-radius: 4px;
+            margin-top: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .player-marker {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .back-button {
+            display: inline-block;
+            margin-bottom: 20px;
+            text-decoration: none;
+            color: #66aaff;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <a href="/" class="back-button">← Back to Game</a>
+        <h1>Admin Panel</h1>
+        
+        <div class="admin-section">
+            <h2>World Management</h2>
+            <button id="reset-world-btn" class="danger">Reset World</button>
+            <button id="reset-world-custom-btn">Reset with Seed</button>
+            <input type="number" id="seed-input" placeholder="Enter seed number">
+            <button id="save-world-btn">Save World Now</button>
+        </div>
+        
+        <div class="admin-section">
+            <h2>Multiplayer Status</h2>
+            <div class="status-panel">
+                <div class="status-item">
+                    <span>Connected Players:</span>
+                    <span id="player-count" class="status-value">0</span>
+                </div>
+                <div class="status-item">
+                    <span>Server Status:</span>
+                    <span id="server-status" class="status-value">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span>World Seed:</span>
+                    <span id="world-seed" class="status-value">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span>Generated Chunks:</span>
+                    <span id="chunk-count" class="status-value">0</span>
+                </div>
+                <div class="status-item">
+                    <span>Block Updates:</span>
+                    <span id="block-updates" class="status-value">0</span>
+                </div>
+                <div class="status-item">
+                    <span>World Age:</span>
+                    <span id="world-age" class="status-value">0 days</span>
+                </div>
+            </div>
+            
+            <h3>Connected Players</h3>
+            <div id="player-list" class="player-list-container">
+                <!-- Player list will be populated here -->
+                <div>No players connected</div>
+            </div>
+        </div>
+        
+        <div class="admin-section">
+            <h2>World Map</h2>
+            <div id="world-map">
+                <!-- Map will be rendered here -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Libraries -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Game files needed for admin functionality -->
+    <script src="/js/constants.js"></script>
+    <script src="/js/admin.js"></script>
+</body>
+</html> 
