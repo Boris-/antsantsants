@@ -54,3 +54,4 @@ server/config/local.js
 # Game-specific files that might be generated at runtime
 /saves
 /user-data 
+world_save.json
