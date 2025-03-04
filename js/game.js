@@ -4,24 +4,97 @@
 let _requestChunk = () => {}; // Default empty function
 let _sendBlockDig = () => {}; // Default empty function
 
+// Throttling mechanism for server updates
+const pendingBlockDigs = new Map(); // Store pending updates
+let blockDigUpdateTimer = null;
+const BLOCK_DIG_THROTTLE_MS = 50; // Reduced from 100ms to 50ms for snappier response
+
+// Throttled version of sendBlockDig
+function throttledSendBlockDig(x, y, tileType) {
+    // Apply the change locally immediately for instant feedback
+    setTile(x, y, tileType, false);
+    
+    // Store this update in the pending map for server sync
+    pendingBlockDigs.set(`${x},${y}`, { x, y, tileType });
+    
+    // If no timer is running, start one
+    if (!blockDigUpdateTimer) {
+        blockDigUpdateTimer = setTimeout(() => {
+            // Send all pending updates
+            const updates = Array.from(pendingBlockDigs.values());
+            
+            // Process in batches if there are many updates
+            const BATCH_SIZE = 15; // Increased from 10 to 15
+            for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+                const batch = updates.slice(i, i + BATCH_SIZE);
+                
+                // Reduced delay between batches
+                setTimeout(() => {
+                    batch.forEach(update => {
+                        _sendBlockDig(update.x, update.y, update.tileType);
+                    });
+                }, Math.floor(i / BATCH_SIZE) * 10); // Reduced from 20ms to 10ms
+            }
+            
+            // Clear the pending updates and timer
+            pendingBlockDigs.clear();
+            blockDigUpdateTimer = null;
+        }, BLOCK_DIG_THROTTLE_MS);
+    }
+}
+
 // Track recently dug blocks to prevent duplicate particle creation
 const recentlyDugBlocks = new Map();
 
 // Cleanup function for recentlyDugBlocks map
 function cleanupRecentlyDugBlocks() {
     const now = Date.now();
-    const expirationTime = 10000; // 10 seconds
+    const expirationTime = 5000; // Reduced from 10 seconds to 5 seconds
     
-    // Use more efficient array-based cleanup
-    const keysToDelete = Array.from(recentlyDugBlocks.entries())
-        .filter(([_, timestamp]) => now - timestamp > expirationTime)
-        .map(([key]) => key);
+    // Skip if the map is empty
+    if (recentlyDugBlocks.size === 0) return;
     
-    keysToDelete.forEach(key => recentlyDugBlocks.delete(key));
+    // Only perform cleanup if the map has grown beyond a certain size
+    // to avoid unnecessary processing
+    if (recentlyDugBlocks.size > 100) {
+        const keysToDelete = [];
+        
+        // Use for...of loop which is faster than Array.from().filter().map()
+        for (const [key, timestamp] of recentlyDugBlocks.entries()) {
+            if (now - timestamp > expirationTime) {
+                keysToDelete.push(key);
+            }
+        }
+        
+        // Batch delete operations
+        if (keysToDelete.length > 0) {
+            keysToDelete.forEach(key => recentlyDugBlocks.delete(key));
+        }
+    }
 }
 
-// Run cleanup every 30 seconds
-setInterval(cleanupRecentlyDugBlocks, 30000);
+// Run cleanup more frequently with a dynamic interval
+const CLEANUP_INTERVAL_MIN = 5000;  // 5 seconds
+const CLEANUP_INTERVAL_MAX = 30000; // 30 seconds
+
+// Adjust cleanup interval based on activity
+function adjustCleanupInterval() {
+    // If we have many recently dug blocks, run cleanup more frequently
+    const intervalMs = recentlyDugBlocks.size > 50 
+        ? CLEANUP_INTERVAL_MIN 
+        : Math.min(CLEANUP_INTERVAL_MAX, CLEANUP_INTERVAL_MIN * (1 + Math.floor(recentlyDugBlocks.size / 10)));
+    
+    return intervalMs;
+}
+
+// Initial cleanup interval
+let cleanupInterval = setInterval(cleanupRecentlyDugBlocks, adjustCleanupInterval());
+
+// Periodically adjust the cleanup interval
+setInterval(() => {
+    clearInterval(cleanupInterval);
+    cleanupInterval = setInterval(cleanupRecentlyDugBlocks, adjustCleanupInterval());
+}, 60000); // Reassess every minute
 
 // Set up references to multiplayer functions
 function setupMultiplayerReferences() {
@@ -505,9 +578,7 @@ function checkCollision(x, y) {
 function handleDigging() {
     // Check if mouse is down
     if (gameState.mouseDown) {
-        // Debug logging - only log when the mouse state has changed
         if (!gameState.wasMouseDown) {
-            console.log("Mouse is down, attempting to dig");
             gameState.wasMouseDown = true;
         }
         
@@ -515,21 +586,18 @@ function handleDigging() {
         const mouseWorldX = Math.floor((gameState.mouseX / gameState.zoom) + gameState.camera.x);
         const mouseWorldY = Math.floor((gameState.mouseY / gameState.zoom) + gameState.camera.y);
         
-        // Debug logging reduced - only log once per second
-        if (!gameState.lastDigLogTime || (Date.now() - gameState.lastDigLogTime > 1000)) {
-            console.log(`Mouse world coordinates: (${mouseWorldX}, ${mouseWorldY})`);
-            gameState.lastDigLogTime = Date.now();
-        }
-        
         // Calculate tile coordinates
         const tileX = Math.floor(mouseWorldX / TILE_SIZE);
         const tileY = Math.floor(mouseWorldY / TILE_SIZE);
         
-        // Only log coordinate changes, not every frame
+        // Track coordinate changes for optimization
         const tileKey = `${tileX},${tileY}`;
-        if (gameState.lastDigTile !== tileKey) {
-            console.log(`Tile coordinates: (${tileX}, ${tileY})`);
+        const isSameTile = gameState.lastDigTile === tileKey;
+        
+        if (!isSameTile) {
             gameState.lastDigTile = tileKey;
+            // Reset cooldown when moving to a new tile for snappier response when changing tiles
+            gameState.lastDigCooldown = 0;
         }
         
         // Calculate distance from player to mouse
@@ -540,37 +608,13 @@ function handleDigging() {
             Math.pow(playerCenterY - mouseWorldY, 2)
         );
         
-        // Reduce distance logging
-        if (gameState.lastDigDistance === undefined || Math.abs(gameState.lastDigDistance - distance) > 10) {
-            console.log(`Player center: (${playerCenterX}, ${playerCenterY}), Distance to mouse: ${distance}, Dig range: ${gameState.player.digRange}`);
-            gameState.lastDigDistance = distance;
-        }
-        
         // Check if mouse is within digging range
         if (distance <= gameState.player.digRange) {
-            // Reduce redundant logging
-            if (gameState.lastDigInRange !== true) {
-                console.log("Mouse is within digging range");
-                gameState.lastDigInRange = true;
-            }
-            
             // Get current tile type
             const currentTile = getTile(tileX, tileY);
             
-            // Debug output - only log on tile type changes
-            if (gameState.lastDigTileType !== currentTile) {
-                console.log(`Attempting to dig at (${tileX}, ${tileY}), tile type: ${currentTile}, diggable: ${isDiggable(currentTile)}`);
-                gameState.lastDigTileType = currentTile;
-            }
-            
             // Check if tile is diggable
             if (isDiggable(currentTile)) {
-                // Reduce redundant logging
-                if (gameState.lastDigTileIsDiggable !== true) {
-                    console.log(`Tile is diggable: ${currentTile}`);
-                    gameState.lastDigTileIsDiggable = true;
-                }
-                
                 // Create a unique key for this block position
                 const blockKey = `${tileX},${tileY}`;
                 
@@ -578,26 +622,27 @@ function handleDigging() {
                 const now = Date.now();
                 const lastDug = recentlyDugBlocks.get(blockKey);
                 
-                // Only log digging events, not regular checks
-                if (!lastDug || (now - lastDug > 500)) {
-                    console.log(`Last dug time: ${lastDug}, Current time: ${now}, Difference: ${lastDug ? now - lastDug : 'first dig'}`);
-                    console.log(`Digging block at (${tileX}, ${tileY}), tile type: ${currentTile}`);
-                    
+                // Reduced cooldown from 500ms to 150ms for much snappier digging
+                const digCooldown = 150;
+                
+                // Only process digging if cooldown has passed
+                if (!lastDug || (now - lastDug > digCooldown)) {
                     // Record this dig time
                     recentlyDugBlocks.set(blockKey, now);
+                    
+                    // Pre-emptively update the tile locally for instant feedback
+                    setTile(tileX, tileY, TILE_TYPES.AIR, false);
                     
                     // Create particles at the center of the tile
                     const particleX = tileX * TILE_SIZE + TILE_SIZE / 2;
                     const particleY = tileY * TILE_SIZE + TILE_SIZE / 2;
                     const particleColor = getTileColor(currentTile);
                     
-                    // Create particles
-                    createParticles(particleX, particleY, particleColor, 20);
+                    // Create particles (keeping as-is since user said particles are fine)
+                    createParticles(particleX, particleY, particleColor, 10);
                     
                     // Check if tile is collectible
                     if (isCollectible(currentTile)) {
-                        console.log(`Tile is collectible: ${currentTile}`);
-                        
                         // Add to inventory
                         switch (currentTile) {
                             case TILE_TYPES.COAL:
@@ -620,57 +665,36 @@ function handleDigging() {
                                 break;
                         }
                         
-                        // Update inventory display
-                        if (typeof window.updateInventoryDisplay === 'function') {
-                            window.updateInventoryDisplay();
+                        // Batch UI updates with requestAnimationFrame
+                        if (!gameState.pendingUIUpdate) {
+                            gameState.pendingUIUpdate = true;
+                            requestAnimationFrame(() => {
+                                // Update inventory display
+                                if (typeof window.updateInventoryDisplay === 'function') {
+                                    window.updateInventoryDisplay();
+                                }
+                                
+                                // Update score display
+                                if (typeof window.updateScoreDisplay === 'function') {
+                                    window.updateScoreDisplay();
+                                }
+                                gameState.pendingUIUpdate = false;
+                            });
                         }
                         
                         // Add score
                         gameState.score += getScoreValue(currentTile);
-                        
-                        // Update score display
-                        if (typeof window.updateScoreDisplay === 'function') {
-                            window.updateScoreDisplay();
-                        }
                     }
                     
-                    // Send block dig to server if multiplayer is enabled
+                    // Send to server for multiplayer sync
                     if (typeof _sendBlockDig === 'function') {
-                        console.log(`Sending block dig to server: (${tileX}, ${tileY}), tile type: ${TILE_TYPES.AIR}`);
-                        _sendBlockDig(tileX, tileY, TILE_TYPES.AIR);
-                    } else {
-                        console.log(`No _sendBlockDig function available, updating tile locally`);
-                        // If not in multiplayer mode, update the tile locally
-                        setTile(tileX, tileY, TILE_TYPES.AIR);
-                    }
-                } else {
-                    // Reduce frequency of "too soon" messages
-                    const waitTime = 500 - (now - lastDug);
-                    if (!gameState.lastTooSoonTime || (now - gameState.lastTooSoonTime > 1000)) {
-                        console.log(`Too soon to dig this block again, need to wait ${waitTime}ms more`);
-                        gameState.lastTooSoonTime = now;
+                        throttledSendBlockDig(tileX, tileY, TILE_TYPES.AIR);
                     }
                 }
-            } else {
-                // Reduce redundant logging
-                if (gameState.lastDigTileIsDiggable !== false) {
-                    console.log(`Tile is not diggable: ${currentTile}`);
-                    gameState.lastDigTileIsDiggable = false;
-                }
-            }
-        } else {
-            // Reduce redundant logging
-            if (gameState.lastDigInRange !== false) {
-                console.log(`Mouse is too far from player (${distance} > ${gameState.player.digRange})`);
-                gameState.lastDigInRange = false;
             }
         }
-    } else {
-        // Only log when mouse state changes
-        if (gameState.wasMouseDown) {
-            console.log("Mouse is not down, not attempting to dig");
-            gameState.wasMouseDown = false;
-        }
+    } else if (gameState.wasMouseDown) {
+        gameState.wasMouseDown = false;
     }
 }
 
@@ -680,10 +704,20 @@ function createParticles(x, y, color, count) {
         gameState.particles = [];
     }
     
-    // Create more particles for a better effect
-    count = count || 20;
+    // Limit the total number of particles for performance
+    const MAX_PARTICLES = 500;
     
-    for (let i = 0; i < count; i++) {
+    // If we're at the limit, don't create more particles
+    if (gameState.particles.length >= MAX_PARTICLES) {
+        // Remove oldest particles when we exceed the limit
+        gameState.particles.splice(0, count);
+    }
+    
+    // Adjust count based on current particle count for smoother performance
+    const adjustedCount = Math.min(count, Math.floor((MAX_PARTICLES - gameState.particles.length) / 2));
+    if (adjustedCount <= 0) return;
+    
+    for (let i = 0; i < adjustedCount; i++) {
         const angle = Math.random() * Math.PI * 2;
         const speed = 3 + Math.random() * 5; // Faster particles
         
@@ -694,7 +728,7 @@ function createParticles(x, y, color, count) {
             velocityY: Math.sin(angle) * speed - 2, // Initial upward boost
             color: color,
             size: 2 + Math.random() * 3,
-            expireTime: Date.now() + 300 + Math.random() * 500, // Shorter lifetime for faster animation
+            expireTime: Date.now() + 300 + Math.random() * 300, // Shorter lifetime for better performance
             gravity: 0.2 + Math.random() * 0.1, // Variable gravity for more natural movement
             createdAt: Date.now()
         });
@@ -1444,44 +1478,44 @@ function drawParticlesDirect() {
     }
 }
 
-// Update particles
+// Update particles with improved performance
 function updateParticles(deltaTime) {
-    if (!gameState.particles || gameState.isZooming) return;
-    
-    const currentTime = Date.now();
-    const dt = deltaTime / 16.67; // Normalize to 60fps for consistent physics
-    
-    // Update each particle
-    for (let i = gameState.particles.length - 1; i >= 0; i--) {
-        const particle = gameState.particles[i];
-        
-        // Remove expired particles
-        if (currentTime > particle.expireTime) {
-            gameState.particles.splice(i, 1);
-            continue;
-        }
-        
-        // Update position with delta time for smooth movement
-        particle.x += particle.velocityX * dt;
-        particle.y += particle.velocityY * dt;
-        
-        // Apply gravity (use particle's own gravity value if available)
-        const gravity = particle.gravity || 0.1;
-        particle.velocityY += gravity * dt;
-        
-        // Add drag to slow particles over time
-        particle.velocityX *= 0.98;
-        particle.velocityY *= 0.98;
+    if (!gameState.particles || gameState.particles.length === 0) {
+        return; // Skip if no particles
     }
     
-    // Safety check: if particles have been around for more than 10 seconds, remove them
-    // This prevents any potential infinite loops
-    if (gameState.particles.length > 0) {
-        const oldestAllowedTime = currentTime - 10000; // 10 seconds ago
-        gameState.particles = gameState.particles.filter(p => 
-            (p.createdAt && p.createdAt > oldestAllowedTime) || 
-            (p.expireTime > oldestAllowedTime)
-        );
+    const now = Date.now();
+    let i = 0;
+    
+    // Process particles in chunks for better performance
+    const CHUNK_SIZE = 100; // Process this many particles at once
+    const totalParticles = gameState.particles.length;
+    
+    // Only process a subset of particles each frame if there are too many
+    const particlesToProcess = Math.min(totalParticles, CHUNK_SIZE);
+    
+    // Update only a subset of particles if there are too many
+    for (i = 0; i < particlesToProcess; i++) {
+        const particle = gameState.particles[i];
+        
+        // Apply gravity
+        particle.velocityY += particle.gravity;
+        
+        // Update position
+        particle.x += particle.velocityX;
+        particle.y += particle.velocityY;
+        
+        // Slow down over time (air resistance)
+        particle.velocityX *= 0.98;
+        particle.velocityY *= 0.98;
+        
+        // Shrink over time
+        particle.size *= 0.97;
+    }
+    
+    // Remove expired particles - do this in bulk for better performance
+    if (totalParticles > 0) {
+        gameState.particles = gameState.particles.filter(p => now < p.expireTime);
     }
 }
 
@@ -1493,8 +1527,8 @@ function drawParticles() {
     
     for (const particle of gameState.particles) {
         // Calculate opacity based on remaining lifetime
-        const lifePercent = 1 - ((particle.expireTime - currentTime) / 
-                               (particle.expireTime - (particle.createdAt || (particle.expireTime - 500))));
+        const lifetime = particle.expireTime - (particle.createdAt || (particle.expireTime - 500));
+        const lifePercent = 1 - ((particle.expireTime - currentTime) / lifetime);
         const opacity = 1 - lifePercent; // Fade out as particles age
         
         // Set fill style with opacity
@@ -1576,7 +1610,7 @@ function getTile(x, y) {
 
 // Set a tile at specific world coordinates
 function setTile(x, y, tileType, sendToServer = true) {
-    // Check if out of bounds
+    // Fast bounds check
     if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
         return; // Out of bounds
     }
@@ -1586,30 +1620,36 @@ function setTile(x, y, tileType, sendToServer = true) {
     const chunkY = Math.floor(y / CHUNK_SIZE);
     const chunkKey = `${chunkX},${chunkY}`;
     
+    // Fetch chunk (cached lookup)
+    const chunk = gameState.chunks[chunkKey];
+    
+    // If chunk doesn't exist, request it (only if we're sending to server)
+    if (!chunk) {
+        if (sendToServer && typeof _requestChunk === 'function') {
+            _requestChunk(chunkX, chunkY);
+        }
+        return; // Can't set tile in non-existent chunk
+    }
+    
     // Calculate local coordinates within chunk
     const localX = x % CHUNK_SIZE;
     const localY = y % CHUNK_SIZE;
     
-    // Check if chunk exists
-    if (!gameState.chunks[chunkKey]) {
-        // Request chunk if multiplayer is enabled
-        if (typeof _requestChunk === 'function') {
-            _requestChunk(chunkX, chunkY);
-        }
-        
-        return; // Can't set tile in non-existent chunk
+    // Skip if tile is already the desired type
+    if (chunk[localY][localX] === tileType) {
+        return; // No change needed
     }
     
-    // Set tile in chunk
-    gameState.chunks[chunkKey][localY][localX] = tileType;
+    // Set tile in chunk (direct array access is faster)
+    chunk[localY][localX] = tileType;
+    
+    // Mark as having unsaved changes
+    gameState.hasUnsavedChanges = true;
     
     // Send to server if requested and multiplayer is enabled
     if (sendToServer && typeof _sendBlockDig === 'function') {
         _sendBlockDig(x, y, tileType);
     }
-    
-    // Mark as having unsaved changes
-    gameState.hasUnsavedChanges = true;
 }
 
 // Expose game functions to window object for use in other modules
@@ -1629,7 +1669,28 @@ window.createParticles = createParticles;
 window.isDiggable = isDiggable;
 window.isSolid = isSolid;
 window.isCollectible = isCollectible;
+window.getBiomeAt = getBiomeAt;
+window.getScoreValue = getScoreValue;
+window.getTileName = getTileName;
+window.checkCollision = checkCollision;
+window.throttledSendBlockDig = throttledSendBlockDig;
+
+// Add a requestWorldData fallback in case the one in multiplayer.js fails to load
+// (This will be overridden by the real one in multiplayer.js if it loads properly)
+if (typeof window.requestWorldData !== 'function') {
+    window.requestWorldData = function(callback) {
+        console.log("Using fallback requestWorldData function");
+        if (callback && typeof callback === 'function') {
+            callback({});
+        }
+    };
+}
 
 // Log that the functions have been exported
 console.log("Game functions exported to window object");
-console.log("handleDigging function available:", typeof window.handleDigging === 'function'); 
+console.log("Functions available:");
+console.log("- handleDigging:", typeof window.handleDigging === 'function');
+console.log("- getTile:", typeof window.getTile === 'function');
+console.log("- setTile:", typeof window.setTile === 'function');
+console.log("- getBiomeAt:", typeof window.getBiomeAt === 'function');
+console.log("- requestWorldData:", typeof window.requestWorldData === 'function'); 

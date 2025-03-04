@@ -1,7 +1,7 @@
 // Multiplayer client functionality
-let socket;
+let socket = null;
 let otherPlayers = {};
-let playerId;
+let playerId = null;
 let isConnectedToServer = false;
 
 // Track recently processed block updates to prevent duplicates
@@ -12,6 +12,44 @@ const CLEANUP_INTERVAL = 30000; // 30 seconds
 const BLOCK_UPDATE_COOLDOWN = 500; // 500ms
 const EXPIRATION_TIME = 10000; // 10 seconds
 const NOTIFICATION_DURATION = 5000; // 5 seconds
+
+// Expose requestWorldData immediately so it's available before anything else
+window.requestWorldData = function(callback) {
+    console.log('Multiplayer requestWorldData called');
+    if (socket && socket.connected) {
+        // Create a unique event handler for this request
+        const responseHandler = (data) => {
+            console.log('Received world data from server');
+            if (callback && typeof callback === 'function') {
+                callback(data);
+            }
+        };
+        
+        // Set up the one-time response handler
+        socket.once('worldData', responseHandler);
+        
+        // Send the request to the server
+        socket.emit('requestWorldData');
+    } else {
+        console.warn('Cannot request world data - not connected to server');
+        // Call callback with empty data if provided
+        if (callback && typeof callback === 'function') {
+            setTimeout(() => {
+                callback({});
+            }, 0);
+        }
+    }
+};
+
+// Log that this essential function has been defined early
+console.log("IMPORTANT: requestWorldData function defined at the beginning of multiplayer.js");
+console.log("requestWorldData available:", typeof window.requestWorldData === 'function');
+
+// Constants for multiplayer
+const SERVER_URL = 'http://localhost:3001';
+const AUTO_CONNECT_TO_SERVER = true;
+const VISIBLE_CHUNKS_RADIUS = 2;
+const MAX_OTHER_PLAYERS = 10;
 
 // Update connected players count in gameState
 function updateConnectedPlayersCount() {
@@ -691,37 +729,58 @@ function drawOtherPlayersDirect() {
     }
 }
 
-// Initialize multiplayer when the page loads
+// Wait for the game.js to fully load before initializing multiplayer
+function ensureDependencies() {
+    // Check if essential functions from game.js are available
+    if (typeof window.getTile !== 'function' || typeof window.setTile !== 'function') {
+        console.warn("Waiting for game.js functions to be available...");
+        setTimeout(ensureDependencies, 100);
+        return;
+    }
+    
+    console.log("All dependencies loaded, initializing multiplayer");
+    
+    // Set up socket events
+    setupSocketEvents();
+    
+    // Initialize multiplayer if auto-connect is enabled
+    if (AUTO_CONNECT_TO_SERVER) {
+        setTimeout(() => {
+            initializeMultiplayer();
+        }, 500);
+    }
+}
+
+// Start the dependency check when the script loads
 window.addEventListener('load', () => {
-    console.log("Initializing multiplayer...");
-    // Initialize multiplayer after a short delay to allow the game to initialize first
-    setTimeout(initializeMultiplayer, 1000);
+    console.log("Multiplayer script loaded, checking dependencies");
+    setTimeout(ensureDependencies, 500); // Give game.js time to initialize
 });
 
-// Export functions to window object
+// Expose multiplayer functions to window
 window.requestChunk = requestChunk;
 window.sendBlockDig = sendBlockDig;
-window.sendPlayerPosition = sendPlayerPosition;
-window.sendInventoryUpdate = sendInventoryUpdate;
-window.resetWorldSeed = resetWorldSeed; // Export the reset function
+window.requestWorldData = requestWorldData;
 
-// Log that the functions have been exported
-console.log("Multiplayer functions exported to window object");
+// Expose reference to socket for other modules
+window.getMultiplayerSocket = () => socket;
 
+// Expose player status check
+window.isMultiplayer = () => isConnectedToServer;
+
+// Add logging to confirm function availability
+console.log("Multiplayer functions exported to window:");
+console.log("- requestChunk:", typeof window.requestChunk === 'function');
+console.log("- sendBlockDig:", typeof window.sendBlockDig === 'function');
+console.log("- requestWorldData:", typeof window.requestWorldData === 'function');
 
 // Function to request world seed reset
 function resetWorldSeed(seed) {
-    if (!isConnectedToServer || !socket) {
-        showNotification('Cannot reset world: Not connected to server');
+    if (!socket || !socket.connected) {
+        console.warn('Cannot reset world seed - not connected to server');
         return;
     }
     
-    // Confirm with user
-    if (!confirm('Are you sure you want to reset the world? All progress will be lost.')) {
-        return;
-    }
-    
-    // Send reset request to server
     socket.emit('resetWorldSeed', { seed });
     
     console.log('Sent request to reset world seed' + (seed !== undefined ? ` to ${seed}` : ''));

@@ -222,7 +222,9 @@ function updateBiomeDisplay() {
     if (!biomeIndicator || !window.gameState || !window.gameState.biomeMap) return;
     
     const playerBiomeX = Math.floor(window.gameState.player.x / TILE_SIZE);
-    const biomeType = getBiomeAt(playerBiomeX);
+    
+    // Use window.getBiomeAt to ensure we're accessing the global function
+    const biomeType = window.getBiomeAt ? window.getBiomeAt(playerBiomeX) : 0;
     
     let biomeName = "Unknown";
     switch (biomeType) {
@@ -230,9 +232,12 @@ function updateBiomeDisplay() {
         case BIOME_TYPES.FOREST: biomeName = "Forest"; break;
         case BIOME_TYPES.DESERT: biomeName = "Desert"; break;
         case BIOME_TYPES.MOUNTAINS: biomeName = "Mountains"; break;
+        case BIOME_TYPES.SNOW: biomeName = "Snow"; break;
+        case BIOME_TYPES.JUNGLE: biomeName = "Jungle"; break;
+        case BIOME_TYPES.CAVE: biomeName = "Cave"; break;
     }
     
-    biomeIndicator.textContent = `Biome: ${biomeName}`;
+    biomeIndicator.textContent = biomeName;
 }
 
 // Update debug info
