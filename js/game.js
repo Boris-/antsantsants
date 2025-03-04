@@ -91,14 +91,16 @@ const PLAYER_CONSTANTS = {
     WALL_STICK_FORCE: 0.5,  // How strongly ant sticks to walls when climbing
     PARACHUTE_DEPLOY_SPEED: 5, // Speed at which parachute deploys
     PARACHUTE_FALL_SPEED: 2,   // Fall speed with parachute
-    PARACHUTE_DRIFT: 0.5       // Horizontal drift with parachute
+    PARACHUTE_DRIFT: 0.5,       // Horizontal drift with parachute
+    JUMP_DELAY: 500,    // Delay in milliseconds before allowing another jump
+    MIN_FALL_DISTANCE_FOR_PARACHUTE: 3 * 32  // 3 blocks (each block is 32 pixels)
 };
 
 // Update game state
 function updateGame(deltaTime) {
     // Update player properties using constants
     const { WIDTH_RATIO, HEIGHT_RATIO, DIG_RANGE, SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE, 
-            PARACHUTE_DEPLOY_SPEED, PARACHUTE_FALL_SPEED, PARACHUTE_DRIFT } = PLAYER_CONSTANTS;
+            PARACHUTE_DEPLOY_SPEED, PARACHUTE_FALL_SPEED, PARACHUTE_DRIFT, JUMP_DELAY, MIN_FALL_DISTANCE_FOR_PARACHUTE } = PLAYER_CONSTANTS;
     gameState.player.width = TILE_SIZE * WIDTH_RATIO;
     gameState.player.height = TILE_SIZE * HEIGHT_RATIO;
     gameState.player.digRange = TILE_SIZE * DIG_RANGE;
@@ -298,7 +300,7 @@ function getTileName(tileType) {
 function handlePlayerMovement() {
     // Get player constants
     const { SPEED, GRAVITY, JUMP_FORCE, MAX_FALL_SPEED, GROUND_FRICTION, WALL_SLIDE_SPEED, WALL_STICK_FORCE, 
-            PARACHUTE_DEPLOY_SPEED, PARACHUTE_FALL_SPEED, PARACHUTE_DRIFT } = PLAYER_CONSTANTS;
+            PARACHUTE_DEPLOY_SPEED, PARACHUTE_FALL_SPEED, PARACHUTE_DRIFT, JUMP_DELAY, MIN_FALL_DISTANCE_FOR_PARACHUTE } = PLAYER_CONSTANTS;
 
     // Initialize states if they don't exist
     if (typeof gameState.player.velocityX === 'undefined') {
@@ -315,6 +317,12 @@ function handlePlayerMovement() {
     }
     if (typeof gameState.player.hasParachute === 'undefined') {
         gameState.player.hasParachute = false;
+    }
+    if (typeof gameState.player.lastJumpTime === 'undefined') {
+        gameState.player.lastJumpTime = 0;
+    }
+    if (typeof gameState.player.fallStartY === 'undefined') {
+        gameState.player.fallStartY = gameState.player.y;
     }
 
     // Get movement input
@@ -342,10 +350,20 @@ function handlePlayerMovement() {
     gameState.player.isWallSticking = (touchingLeftWall || touchingRightWall) && !gameState.player.isGrounded;
 
     // Handle parachute deployment
-    if (!gameState.player.isGrounded && !gameState.player.isWallSticking && gameState.player.velocityY > PARACHUTE_DEPLOY_SPEED) {
-        gameState.player.hasParachute = true;
-    } else if (gameState.player.isGrounded || gameState.player.isWallSticking) {
+    if (!gameState.player.isGrounded && !gameState.player.isWallSticking) {
+        // Update fall start position when starting to fall
+        if (gameState.player.velocityY <= 0) {
+            gameState.player.fallStartY = gameState.player.y;
+        }
+        
+        // Check if we've fallen far enough and are falling fast enough
+        const fallDistance = gameState.player.y - gameState.player.fallStartY;
+        if (fallDistance > MIN_FALL_DISTANCE_FOR_PARACHUTE && gameState.player.velocityY > PARACHUTE_DEPLOY_SPEED) {
+            gameState.player.hasParachute = true;
+        }
+    } else {
         gameState.player.hasParachute = false;
+        gameState.player.fallStartY = gameState.player.y;
     }
 
     // Apply movement physics
@@ -396,9 +414,13 @@ function handlePlayerMovement() {
     gameState.player.velocityY = Math.min(gameState.player.velocityY, MAX_FALL_SPEED);
 
     // Handle normal jumping
-    if ((gameState.keys.ArrowUp || gameState.keys.w || gameState.keys.W || gameState.keys.Space) && gameState.player.isGrounded) {
+    const jumpKeyPressed = gameState.keys.ArrowUp || gameState.keys.w || gameState.keys.W || gameState.keys.Space;
+    const currentTime = Date.now();
+    
+    if (jumpKeyPressed && gameState.player.isGrounded && currentTime - gameState.player.lastJumpTime >= JUMP_DELAY) {
         gameState.player.velocityY = JUMP_FORCE;
         gameState.player.isGrounded = false;
+        gameState.player.lastJumpTime = currentTime;
     }
 
     // Reset grounded state before collision checks
