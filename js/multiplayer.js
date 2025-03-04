@@ -13,6 +13,14 @@ const BLOCK_UPDATE_COOLDOWN = 500; // 500ms
 const EXPIRATION_TIME = 10000; // 10 seconds
 const NOTIFICATION_DURATION = 5000; // 5 seconds
 
+// Update connected players count in gameState
+function updateConnectedPlayersCount() {
+    if (window.gameState && typeof otherPlayers !== 'undefined') {
+        // Store the count in gameState for other components to access
+        window.gameState.connectedPlayersCount = Object.keys(otherPlayers).length + 1; // +1 for self
+    }
+}
+
 // Cleanup function for recentBlockUpdates map
 function cleanupRecentBlockUpdates() {
     const now = Date.now();
@@ -120,52 +128,62 @@ function processBlockUpdate(data) {
 
 // Set up socket event handlers
 function setupSocketEvents() {
+    if (!socket) {
+        console.error('Socket not initialized');
+        return;
+    }
+    
+    // Connection established
     socket.on('connect', () => {
         console.log('Connected to server with ID:', socket.id);
         isConnectedToServer = true;
+        playerId = socket.id;
+        
+        // Request world data
+        requestWorldData();
+        
+        // Update player count
+        updateConnectedPlayersCount();
+        
+        showNotification('Connected to server');
     });
     
     socket.on('initialize', (data) => {
         console.log('Received initialization data');
         
-        playerId = data.id;
         otherPlayers = { ...data.players };
         delete otherPlayers[playerId];
         
-        // Update game state
-        gameState.worldSeed = Number(data.worldSeed);
-        gameState.terrainHeights = data.terrainHeights;
-        gameState.biomeMap = data.biomeMap;
-        
-        // Initialize day/night cycle if provided
+        // Initialize day/night cycle
         if (data.dayNightCycle) {
-            // Use the consolidated sync function
-            if (typeof window.syncDayNightCycleWithServer === 'function') {
-                window.syncDayNightCycleWithServer(data.dayNightCycle);
-            } else {
-                // Fallback if sync function isn't available
-                gameState.dayNightCycle = {
-                    ...gameState.dayNightCycle,
-                    time: data.dayNightCycle.time,
-                    dayLength: data.dayNightCycle.dayLength,
-                    enabled: true,
-                    lastUpdate: Date.now()
-                };
-            }
+            gameState.dayNightCycle = data.dayNightCycle;
+            gameState.dayNightCycle.lastUpdate = Date.now();
         }
         
-        if (!gameState.biomeTypes) {
-            initializeBiomes();
+        // Initialize world seed if provided
+        if (data.worldSeed) {
+            gameState.worldSeed = data.worldSeed;
+            console.log('Using server-provided world seed:', gameState.worldSeed);
         }
         
-        requestInitialChunks();
-        showPlayerInfo();
+        // Update player count after receiving initial data
+        updateConnectedPlayersCount();
+        
+        console.log('Multiplayer initialized with', Object.keys(otherPlayers).length, 'other players');
         showNotification('Connected to persistent world');
     });
     
-    socket.on('playerJoined', (player) => {
-        otherPlayers[player.id] = player;
-        showNotification(`Player ${player.id.substring(0, 5)}... joined`);
+    socket.on('playerJoined', (playerData) => {
+        if (playerData.id !== playerId) {
+            // Add the new player to our tracking
+            otherPlayers[playerData.id] = playerData;
+            
+            console.log(`Player joined: ${playerData.id}`);
+            showNotification('Player joined');
+            
+            // Update player count
+            updateConnectedPlayersCount();
+        }
     });
     
     socket.on('playerMoved', (data) => {
@@ -179,8 +197,14 @@ function setupSocketEvents() {
     });
     
     socket.on('playerLeft', (playerId) => {
-        delete otherPlayers[playerId];
-        showNotification(`Player ${playerId.substring(0, 5)}... left`);
+        if (otherPlayers[playerId]) {
+            delete otherPlayers[playerId];
+            console.log(`Player left: ${playerId}`);
+            showNotification('Player left');
+            
+            // Update player count
+            updateConnectedPlayersCount();
+        }
     });
     
     socket.on('chunkData', processChunkData);
@@ -238,6 +262,21 @@ function setupSocketEvents() {
             // Log day/night update for debugging
             console.log('Day/Night cycle updated:', gameState.dayNightCycle);
         }
+    });
+
+    socket.on('playerUpdate', (playerData) => {
+        // Don't update our own player
+        if (playerData.id === playerId) return;
+        
+        // Store player data
+        otherPlayers[playerData.id] = {
+            ...otherPlayers[playerData.id],
+            ...playerData,
+            lastUpdate: Date.now()
+        };
+        
+        // Update the player count in case this is a new player
+        updateConnectedPlayersCount();
     });
 }
 

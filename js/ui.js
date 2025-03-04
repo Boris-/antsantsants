@@ -309,8 +309,9 @@ function updatePlayerStatsDisplay() {
     const playerY = Math.floor(window.gameState.player.y);
     const fps = Math.round(window.gameState.fps || 0);
     
-    // Get connected players count from otherPlayers if available
-    const connectedPlayers = window.otherPlayers ? Object.keys(window.otherPlayers).length + 1 : 1; // +1 for the current player
+    // Get connected players count from gameState
+    // This is updated by the multiplayer module
+    const connectedPlayers = window.gameState.connectedPlayersCount || 1;
     
     playerStatsDisplay.innerHTML = `
         <div>Position: (${playerX}, ${playerY})</div>
