@@ -277,4 +277,28 @@ canvas {
 
 #reset-seed-button:active {
     background-color: #cc2222;
+}
+
+/* Player Stats Display (bottom left) */
+#player-stats-display {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 100;
+    font-size: 14px;
+    line-height: 1.5;
+    pointer-events: none;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+}
+
+#player-stats-display div {
+    margin-bottom: 2px;
+}
+
+#player-stats-display div:last-child {
+    margin-bottom: 0;
 } 

@@ -46,6 +46,12 @@ function initializeUI() {
     biomeIndicator.className = 'ui-element';
     uiContainer.appendChild(biomeIndicator);
     
+    // Create player stats display (bottom left)
+    const playerStatsDisplay = document.createElement('div');
+    playerStatsDisplay.id = 'player-stats-display';
+    playerStatsDisplay.className = 'ui-element';
+    document.body.appendChild(playerStatsDisplay);
+    
     // Create reset seed button container
     const resetSeedContainer = document.createElement('div');
     resetSeedContainer.id = 'reset-seed-container';
@@ -99,6 +105,7 @@ function updateUI() {
     updateInventoryDisplay();
     updateBiomeDisplay();
     updateDebugInfo();
+    updatePlayerStatsDisplay();
 }
 
 // Update health display
@@ -288,6 +295,30 @@ function updateDebugInfo() {
     }
 }
 
+// Update player stats display (position, connected players, FPS)
+function updatePlayerStatsDisplay() {
+    const playerStatsDisplay = document.getElementById('player-stats-display');
+    if (!playerStatsDisplay) return;
+    
+    if (!window.gameState || !window.gameState.player) {
+        playerStatsDisplay.textContent = 'Player stats not available';
+        return;
+    }
+    
+    const playerX = Math.floor(window.gameState.player.x);
+    const playerY = Math.floor(window.gameState.player.y);
+    const fps = Math.round(window.gameState.fps || 0);
+    
+    // Get connected players count from otherPlayers if available
+    const connectedPlayers = window.otherPlayers ? Object.keys(window.otherPlayers).length + 1 : 1; // +1 for the current player
+    
+    playerStatsDisplay.innerHTML = `
+        <div>Position: (${playerX}, ${playerY})</div>
+        <div>Connected Players: ${connectedPlayers}</div>
+        <div>FPS: ${fps}</div>
+    `;
+}
+
 // Show a temporary message to the player
 function showGameMessage(text, duration = 3000) {
     // Remove any existing message
@@ -345,6 +376,7 @@ window.updateScoreDisplay = updateScoreDisplay;
 window.updateInventoryDisplay = updateInventoryDisplay;
 window.updateBiomeDisplay = updateBiomeDisplay;
 window.updateDebugInfo = updateDebugInfo;
+window.updatePlayerStatsDisplay = updatePlayerStatsDisplay;
 window.showGameMessage = showGameMessage;
 window.toggleDebugMode = toggleDebugMode;
 window.showDamageFlash = showDamageFlash;

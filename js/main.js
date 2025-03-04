@@ -101,11 +101,13 @@ function renderGame() {
     if (typeof window.updateHealthDisplay === 'function' &&
         typeof window.updateScoreDisplay === 'function' &&
         typeof window.updateInventoryDisplay === 'function' &&
-        typeof window.updateBiomeDisplay === 'function') {
+        typeof window.updateBiomeDisplay === 'function' &&
+        typeof window.updatePlayerStatsDisplay === 'function') {
         window.updateHealthDisplay();
         window.updateScoreDisplay();
         window.updateInventoryDisplay();
         window.updateBiomeDisplay();
+        window.updatePlayerStatsDisplay();
     }
 }
 

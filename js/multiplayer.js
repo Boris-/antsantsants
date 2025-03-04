@@ -28,7 +28,7 @@ setInterval(cleanupRecentBlockUpdates, CLEANUP_INTERVAL);
 
 // Initialize multiplayer connection
 function initializeMultiplayer() {
-    socket = io('http://localhost:3001');
+    socket = io('http://144.91.69.122:3001/');
     setupSocketEvents();
     addResetSeedButton();
     console.log('Connecting to multiplayer server...');
