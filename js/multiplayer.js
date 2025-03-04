@@ -139,13 +139,19 @@ function setupSocketEvents() {
         
         // Initialize day/night cycle if provided
         if (data.dayNightCycle) {
-            gameState.dayNightCycle = {
-                ...gameState.dayNightCycle,
-                time: data.dayNightCycle.time,
-                dayLength: data.dayNightCycle.dayLength,
-                enabled: true,
-                lastUpdate: Date.now()
-            };
+            // Use the consolidated sync function
+            if (typeof window.syncDayNightCycleWithServer === 'function') {
+                window.syncDayNightCycleWithServer(data.dayNightCycle);
+            } else {
+                // Fallback if sync function isn't available
+                gameState.dayNightCycle = {
+                    ...gameState.dayNightCycle,
+                    time: data.dayNightCycle.time,
+                    dayLength: data.dayNightCycle.dayLength,
+                    enabled: true,
+                    lastUpdate: Date.now()
+                };
+            }
         }
         
         if (!gameState.biomeTypes) {
@@ -209,17 +215,29 @@ function setupSocketEvents() {
     
     // Handle day/night cycle updates
     socket.on('dayNightUpdate', (data) => {
-        if (!gameState.dayNightCycle) {
-            gameState.dayNightCycle = {
-                enabled: true,
-                lastUpdate: Date.now()
-            };
+        // Use the consolidated sync function from gameState.js
+        if (typeof window.syncDayNightCycleWithServer === 'function') {
+            window.syncDayNightCycleWithServer(data);
+        } else {
+            console.error('Day/night sync function not found');
+            
+            // Fallback implementation if sync function is not available
+            if (!gameState.dayNightCycle) {
+                gameState.dayNightCycle = {
+                    enabled: true,
+                    lastUpdate: Date.now()
+                };
+            }
+            
+            // Update the day/night cycle data
+            gameState.dayNightCycle.time = data.time;
+            gameState.dayNightCycle.dayLength = data.dayLength;
+            gameState.dayNightCycle.lastUpdate = Date.now();
+            gameState.dayNightCycle.enabled = true;
+            
+            // Log day/night update for debugging
+            console.log('Day/Night cycle updated:', gameState.dayNightCycle);
         }
-        
-        // Update the day/night cycle data
-        gameState.dayNightCycle.time = data.time;
-        gameState.dayNightCycle.dayLength = data.dayLength;
-        gameState.dayNightCycle.lastUpdate = Date.now();
     });
 }
 

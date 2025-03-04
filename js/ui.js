@@ -138,15 +138,11 @@ function updateScoreDisplay() {
 
 // Update inventory display
 function updateInventoryDisplay() {
-    console.log("Updating inventory display");
     const inventoryItems = document.getElementById('inventory-items');
     if (!inventoryItems) {
         console.error("Inventory items container not found!");
         return;
     }
-    
-    // Clear current inventory display
-    inventoryItems.innerHTML = '';
     
     // Check if player and inventory exist
     if (!window.gameState || !window.gameState.player || !window.gameState.player.inventory) {
@@ -161,8 +157,45 @@ function updateInventoryDisplay() {
         inventoryItems.appendChild(emptyText);
         return;
     }
+
+    // Cache the inventory for comparison
+    if (!window.previousInventory) {
+        window.previousInventory = {};
+    }
     
-    console.log("Player inventory:", JSON.stringify(window.gameState.player.inventory));
+    // Check if inventory has changed
+    let hasChanged = false;
+    const currentInventory = window.gameState.player.inventory;
+    
+    for (const resourceKey in currentInventory) {
+        if (window.previousInventory[resourceKey] !== currentInventory[resourceKey]) {
+            hasChanged = true;
+            break;
+        }
+    }
+    
+    // Also check if any previous keys are now missing
+    for (const resourceKey in window.previousInventory) {
+        if (currentInventory[resourceKey] === undefined) {
+            hasChanged = true;
+            break;
+        }
+    }
+    
+    // If inventory hasn't changed, return early
+    if (!hasChanged) {
+        return;
+    }
+    
+    console.log("Updating inventory display");
+    
+    // Update the cache with current values
+    window.previousInventory = JSON.parse(JSON.stringify(currentInventory));
+    
+    // Clear current inventory display
+    inventoryItems.innerHTML = '';
+    
+    console.log("Player inventory:", JSON.stringify(currentInventory));
     
     // Check if inventory is empty
     let hasItems = false;
@@ -179,8 +212,8 @@ function updateInventoryDisplay() {
     };
     
     // Add each inventory item
-    for (const resourceKey in window.gameState.player.inventory) {
-        const count = window.gameState.player.inventory[resourceKey];
+    for (const resourceKey in currentInventory) {
+        const count = currentInventory[resourceKey];
         console.log(`Resource ${resourceKey}: ${count}`);
         if (count > 0) {
             hasItems = true;

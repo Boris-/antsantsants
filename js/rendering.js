@@ -649,6 +649,15 @@ function drawCelestialBody() {
     const centerX = canvas.width / 2;
     const centerY = canvas.height + radius * 0.5; // Position horizon lower
     
+    // Debug display for day/night cycle
+    if (gameState.debug) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(10, 60, 120, 30);
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Arial';
+        ctx.fillText(`Time: ${(time * 24).toFixed(1)} hrs`, 15, 80);
+    }
+    
     // Only show celestial body when it's above the horizon
     if (time >= 0.25 && time <= 0.75) {
         // It's daytime - draw the sun

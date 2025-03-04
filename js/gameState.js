@@ -10,6 +10,14 @@ const gameState = {
     biomeMap: [], // Store biome at each x position
     biomeTypes: {}, // Biome definitions
     
+    // Day/Night cycle properties
+    dayNightCycle: {
+        time: 0, // 0-1 representing time of day (0 = midnight, 0.5 = noon)
+        dayLength: 1200000, // 20 minutes in milliseconds for a full day cycle
+        lastUpdate: Date.now(),
+        enabled: true // Ensure day/night cycle is enabled by default
+    },
+    
     // Player properties
     player: {
         x: 0,
@@ -170,8 +178,6 @@ function setTile(x, y, tileType, sendToServer = true) {
     }
 }
 
-
-
 // Initialize UI elements
 function initializeUI() {
     // Create UI container if it doesn't exist
@@ -218,6 +224,15 @@ function initializeUI() {
         uiContainer.appendChild(biomeElement);
     }
     
+    // Create time display for day/night cycle
+    let timeElement = document.getElementById('timeDisplay');
+    if (!timeElement) {
+        timeElement = document.createElement('div');
+        timeElement.id = 'timeDisplay';
+        timeElement.className = 'game-info';
+        uiContainer.appendChild(timeElement);
+    }
+    
     // Create debug info display
     let debugElement = document.getElementById('debug-info');
     if (!debugElement) {
@@ -259,8 +274,13 @@ function initializeUI() {
         }
         
         #biome {
-            bottom: 10px;
-            right: 10px;
+            top: 50px;
+            left: 10px;
+        }
+        
+        #timeDisplay {
+            top: 90px;
+            left: 10px;
         }
         
         #debug-info {
@@ -308,27 +328,35 @@ function updateBiomeDisplay() {
 // Update debug info
 function updateDebugInfo() {
     const debugElement = document.getElementById('debug-info');
-    if (debugElement) {
-        if (gameState.debug) {
-            const playerX = Math.floor(gameState.player.x / TILE_SIZE);
-            const playerY = Math.floor(gameState.player.y / TILE_SIZE);
-            const chunkX = Math.floor(playerX / CHUNK_SIZE);
-            const chunkY = Math.floor(playerY / CHUNK_SIZE);
-            const fps = Math.round(gameState.fps || 0);
-            
-            debugElement.style.display = 'block';
-            debugElement.innerHTML = `
-                <div>FPS: ${fps}</div>
-                <div>Position: (${playerX}, ${playerY})</div>
-                <div>Chunk: (${chunkX}, ${chunkY})</div>
-                <div>Loaded Chunks: ${gameState.loadedChunks.size}</div>
-                <div>Camera: (${Math.floor(gameState.camera.x)}, ${Math.floor(gameState.camera.y)})</div>
-                <div>Zoom: ${gameState.zoom.toFixed(2)}</div>
-            `;
-        } else {
-            debugElement.style.display = 'none';
-        }
+    if (!debugElement) return;
+    
+    const playerX = Math.floor(gameState.player.x / TILE_SIZE);
+    const playerY = Math.floor(gameState.player.y / TILE_SIZE);
+    const chunkX = Math.floor(playerX / CHUNK_SIZE);
+    const chunkY = Math.floor(playerY / CHUNK_SIZE);
+    const chunk = gameState.chunks[`${chunkX},${chunkY}`];
+    const biome = getBiome(playerX);
+    
+    // Day/Night cycle info
+    let timeInfo = 'Day/Night: Disabled';
+    if (gameState.dayNightCycle && gameState.dayNightCycle.enabled) {
+        const time = gameState.dayNightCycle.time;
+        const hours = Math.floor(time * 24);
+        const minutes = Math.floor((time * 24 * 60) % 60);
+        timeInfo = `Day/Night: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} (${(time * 100).toFixed(1)}%)`;
     }
+    
+    debugElement.innerHTML = `
+        FPS: ${Math.round(1000 / (Date.now() - gameState.lastFrameTime))}
+        Player: (${playerX}, ${playerY})
+        Chunk: (${chunkX}, ${chunkY})
+        Zoom: ${gameState.zoom.toFixed(1)}
+        Chunks Loaded: ${Object.keys(gameState.chunks).length}
+        Biome: ${biome ? biome.name : 'Unknown'}
+        ${timeInfo}
+    `;
+    
+    gameState.lastFrameTime = Date.now();
 }
 
 // Set up event listeners
@@ -392,3 +420,98 @@ window.addEventListener('resize', () => {
     gameState.canvas.width = window.innerWidth;
     gameState.canvas.height = window.innerHeight;
 }); 
+
+// Update day/night cycle
+function updateDayNightCycle(timestamp) {
+    if (!gameState.dayNightCycle) {
+        // Initialize the day/night cycle if it doesn't exist
+        gameState.dayNightCycle = {
+            time: 0.5, // Start at noon
+            dayLength: 1200000, // 20 minutes for a full day
+            lastUpdate: timestamp || Date.now(),
+            enabled: true
+        };
+        console.log('Day/night cycle initialized:', gameState.dayNightCycle);
+        return;
+    }
+    
+    // Skip if disabled
+    if (!gameState.dayNightCycle.enabled) {
+        return;
+    }
+    
+    // Calculate time elapsed since last update
+    const now = timestamp || Date.now();
+    const elapsed = now - gameState.dayNightCycle.lastUpdate;
+    
+    // Calculate the time adjustment for smooth client-side interpolation
+    const adjustment = elapsed / gameState.dayNightCycle.dayLength;
+    
+    // Small incremental update for smoother transitions
+    gameState.dayNightCycle.time += adjustment;
+    
+    // Keep time between 0 and 1
+    while (gameState.dayNightCycle.time >= 1) {
+        gameState.dayNightCycle.time -= 1;
+    }
+    
+    // Update lastUpdate for next frame
+    gameState.dayNightCycle.lastUpdate = now;
+    
+    // Update UI time display
+    updateTimeDisplay();
+    
+    // Update debug info if in debug mode
+    if (gameState.debug) {
+        updateDebugInfo();
+    }
+}
+
+// Update the time display in the UI
+function updateTimeDisplay() {
+    const timeDisplay = document.getElementById('timeDisplay');
+    if (timeDisplay && gameState.dayNightCycle) {
+        const hours = Math.floor(gameState.dayNightCycle.time * 24);
+        const minutes = Math.floor((gameState.dayNightCycle.time * 24 * 60) % 60);
+        timeDisplay.textContent = `Time: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    }
+}
+
+// Handle server day/night cycle updates
+function syncDayNightCycleWithServer(serverTimeData) {
+    if (!gameState.dayNightCycle) {
+        gameState.dayNightCycle = {
+            enabled: true,
+            lastUpdate: Date.now()
+        };
+    }
+    
+    // Update with server data
+    gameState.dayNightCycle.time = serverTimeData.time;
+    gameState.dayNightCycle.dayLength = serverTimeData.dayLength;
+    gameState.dayNightCycle.lastUpdate = Date.now();
+    gameState.dayNightCycle.enabled = true;
+    
+    // Update UI immediately after sync
+    updateTimeDisplay();
+    
+    console.log('Synced day/night cycle with server:', gameState.dayNightCycle);
+}
+
+// Make functions available globally
+window.updateDayNightCycle = updateDayNightCycle;
+window.syncDayNightCycleWithServer = syncDayNightCycleWithServer;
+
+// Function to toggle debug mode
+function toggleDebugMode() {
+    gameState.debug = !gameState.debug;
+    console.log(`Debug mode ${gameState.debug ? 'enabled' : 'disabled'}`);
+    
+    // Update debug display
+    updateDebugInfo();
+    
+    return gameState.debug;
+}
+
+// Make debug toggle available globally
+window.toggleDebugMode = toggleDebugMode; 

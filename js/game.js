@@ -505,19 +505,32 @@ function checkCollision(x, y) {
 function handleDigging() {
     // Check if mouse is down
     if (gameState.mouseDown) {
-        console.log("Mouse is down, attempting to dig");
+        // Debug logging - only log when the mouse state has changed
+        if (!gameState.wasMouseDown) {
+            console.log("Mouse is down, attempting to dig");
+            gameState.wasMouseDown = true;
+        }
         
         // Calculate mouse position in world coordinates
         const mouseWorldX = Math.floor((gameState.mouseX / gameState.zoom) + gameState.camera.x);
         const mouseWorldY = Math.floor((gameState.mouseY / gameState.zoom) + gameState.camera.y);
         
-        console.log(`Mouse world coordinates: (${mouseWorldX}, ${mouseWorldY})`);
+        // Debug logging reduced - only log once per second
+        if (!gameState.lastDigLogTime || (Date.now() - gameState.lastDigLogTime > 1000)) {
+            console.log(`Mouse world coordinates: (${mouseWorldX}, ${mouseWorldY})`);
+            gameState.lastDigLogTime = Date.now();
+        }
         
         // Calculate tile coordinates
         const tileX = Math.floor(mouseWorldX / TILE_SIZE);
         const tileY = Math.floor(mouseWorldY / TILE_SIZE);
         
-        console.log(`Tile coordinates: (${tileX}, ${tileY})`);
+        // Only log coordinate changes, not every frame
+        const tileKey = `${tileX},${tileY}`;
+        if (gameState.lastDigTile !== tileKey) {
+            console.log(`Tile coordinates: (${tileX}, ${tileY})`);
+            gameState.lastDigTile = tileKey;
+        }
         
         // Calculate distance from player to mouse
         const playerCenterX = gameState.player.x + gameState.player.width / 2;
@@ -527,21 +540,36 @@ function handleDigging() {
             Math.pow(playerCenterY - mouseWorldY, 2)
         );
         
-        console.log(`Player center: (${playerCenterX}, ${playerCenterY}), Distance to mouse: ${distance}, Dig range: ${gameState.player.digRange}`);
+        // Reduce distance logging
+        if (gameState.lastDigDistance === undefined || Math.abs(gameState.lastDigDistance - distance) > 10) {
+            console.log(`Player center: (${playerCenterX}, ${playerCenterY}), Distance to mouse: ${distance}, Dig range: ${gameState.player.digRange}`);
+            gameState.lastDigDistance = distance;
+        }
         
         // Check if mouse is within digging range
         if (distance <= gameState.player.digRange) {
-            console.log("Mouse is within digging range");
+            // Reduce redundant logging
+            if (gameState.lastDigInRange !== true) {
+                console.log("Mouse is within digging range");
+                gameState.lastDigInRange = true;
+            }
             
             // Get current tile type
             const currentTile = getTile(tileX, tileY);
             
-            // Debug output
-            console.log(`Attempting to dig at (${tileX}, ${tileY}), tile type: ${currentTile}, diggable: ${isDiggable(currentTile)}`);
+            // Debug output - only log on tile type changes
+            if (gameState.lastDigTileType !== currentTile) {
+                console.log(`Attempting to dig at (${tileX}, ${tileY}), tile type: ${currentTile}, diggable: ${isDiggable(currentTile)}`);
+                gameState.lastDigTileType = currentTile;
+            }
             
             // Check if tile is diggable
             if (isDiggable(currentTile)) {
-                console.log(`Tile is diggable: ${currentTile}`);
+                // Reduce redundant logging
+                if (gameState.lastDigTileIsDiggable !== true) {
+                    console.log(`Tile is diggable: ${currentTile}`);
+                    gameState.lastDigTileIsDiggable = true;
+                }
                 
                 // Create a unique key for this block position
                 const blockKey = `${tileX},${tileY}`;
@@ -550,11 +578,9 @@ function handleDigging() {
                 const now = Date.now();
                 const lastDug = recentlyDugBlocks.get(blockKey);
                 
-                console.log(`Last dug time: ${lastDug}, Current time: ${now}, Difference: ${lastDug ? now - lastDug : 'first dig'}`);
-                
-                // Only dig if it's been at least 500ms since the last dig for this block
-                // or if this is the first dig for this block
+                // Only log digging events, not regular checks
                 if (!lastDug || (now - lastDug > 500)) {
+                    console.log(`Last dug time: ${lastDug}, Current time: ${now}, Difference: ${lastDug ? now - lastDug : 'first dig'}`);
                     console.log(`Digging block at (${tileX}, ${tileY}), tile type: ${currentTile}`);
                     
                     // Record this dig time
@@ -618,16 +644,33 @@ function handleDigging() {
                         setTile(tileX, tileY, TILE_TYPES.AIR);
                     }
                 } else {
-                    console.log(`Too soon to dig this block again, need to wait ${500 - (now - lastDug)}ms more`);
+                    // Reduce frequency of "too soon" messages
+                    const waitTime = 500 - (now - lastDug);
+                    if (!gameState.lastTooSoonTime || (now - gameState.lastTooSoonTime > 1000)) {
+                        console.log(`Too soon to dig this block again, need to wait ${waitTime}ms more`);
+                        gameState.lastTooSoonTime = now;
+                    }
                 }
             } else {
-                console.log(`Tile is not diggable: ${currentTile}`);
+                // Reduce redundant logging
+                if (gameState.lastDigTileIsDiggable !== false) {
+                    console.log(`Tile is not diggable: ${currentTile}`);
+                    gameState.lastDigTileIsDiggable = false;
+                }
             }
         } else {
-            console.log(`Mouse is too far from player (${distance} > ${gameState.player.digRange})`);
+            // Reduce redundant logging
+            if (gameState.lastDigInRange !== false) {
+                console.log(`Mouse is too far from player (${distance} > ${gameState.player.digRange})`);
+                gameState.lastDigInRange = false;
+            }
         }
     } else {
-        console.log("Mouse is not down, not attempting to dig");
+        // Only log when mouse state changes
+        if (gameState.wasMouseDown) {
+            console.log("Mouse is not down, not attempting to dig");
+            gameState.wasMouseDown = false;
+        }
     }
 }
 

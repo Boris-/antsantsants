@@ -21,6 +21,12 @@ window.addEventListener('load', () => {
         console.error('UI initialization function not found!');
     }
     
+    // Ensure day/night cycle is initialized even if not connected to server
+    if (!gameState.dayNightCycle && typeof window.updateDayNightCycle === 'function') {
+        window.updateDayNightCycle(Date.now());
+        console.log('Day/night cycle initialized from main.js');
+    }
+    
     // Initialize multiplayer connection
     initializeMultiplayer();
     
@@ -54,9 +60,9 @@ function updateGameState(timestamp) {
     // Update camera position
     updateCamera();
     
-    // Update day/night cycle if enabled
-    if (gameState.dayNightCycle && gameState.dayNightCycle.enabled) {
-        updateDayNightCycle(timestamp);
+    // Use the consolidated day/night cycle function from gameState.js
+    if (typeof window.updateDayNightCycle === 'function') {
+        window.updateDayNightCycle(timestamp);
     }
     
     // Update particles
@@ -115,40 +121,6 @@ function updateCamera() {
     // Clamp camera to world bounds
     gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH * TILE_SIZE - gameState.canvas.width / gameState.zoom));
     gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT * TILE_SIZE - gameState.canvas.height / gameState.zoom));
-}
-
-// Function to update the day/night cycle on the client side
-function updateDayNightCycle(timestamp) {
-    if (!gameState.dayNightCycle || !gameState.dayNightCycle.lastUpdate) {
-        return;
-    }
-    
-    // Calculate time elapsed since last update
-    const now = timestamp || Date.now();
-    const elapsed = now - gameState.dayNightCycle.lastUpdate;
-    
-    // Calculate the time adjustment (smooth client-side interpolation)
-    // Only do a small adjustment locally to avoid desyncing too much from server
-    const adjustment = elapsed / gameState.dayNightCycle.dayLength;
-    
-    // Small incremental update for smoother transitions
-    gameState.dayNightCycle.time += adjustment;
-    
-    // Keep time between 0 and 1
-    while (gameState.dayNightCycle.time >= 1) {
-        gameState.dayNightCycle.time -= 1;
-    }
-    
-    // Update lastUpdate for next frame
-    gameState.dayNightCycle.lastUpdate = now;
-    
-    // Add time display to UI if it exists
-    const timeDisplay = document.getElementById('timeDisplay');
-    if (timeDisplay) {
-        const hours = Math.floor(gameState.dayNightCycle.time * 24);
-        const minutes = Math.floor((gameState.dayNightCycle.time * 24 * 60) % 60);
-        timeDisplay.textContent = `Time: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    }
 }
 
 // Update particles
