@@ -477,8 +477,9 @@ initializeWorld();
 
 // Start server
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';  // Allow connections from all network interfaces in production
+server.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
 
 // Handle graceful shutdown

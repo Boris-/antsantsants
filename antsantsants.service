@@ -1,0 +1,15 @@
+[Unit]
+Description=Ant Terraria Game Server
+After=network.target
+
+[Service]
+Type=simple
+User=gameuser
+WorkingDirectory=/home/gameuser/antsantsants
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+Environment=NODE_ENV=production
+Environment=PORT=3001
+
+[Install]
+WantedBy=multi-user.target 
