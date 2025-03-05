@@ -1,4 +1,4 @@
-const LOCAL_MACHINE = true;
+const LOCAL_MACHINE = false;
 
 // Multiplayer client functionality
 let socket;
