@@ -5,6 +5,10 @@ function setupEventListeners() {
     // Keyboard events
     window.addEventListener('keydown', (e) => {
         gameState.keys[e.code] = true;
+        // Also store simple key values for WASD
+        if (e.key && e.key.length === 1) {
+            gameState.keys[e.key] = true;
+        }
         
         // Toggle debug mode with F3
         if (e.code === 'F3') {
@@ -14,6 +18,10 @@ function setupEventListeners() {
     
     window.addEventListener('keyup', (e) => {
         gameState.keys[e.code] = false;
+        // Also clear simple key values for WASD
+        if (e.key && e.key.length === 1) {
+            gameState.keys[e.key] = false;
+        }
     });
     
     // Mouse events
@@ -99,9 +107,9 @@ function setupEventListeners() {
 // Handle player input
 function handleInput() {
     // Movement
-    const moveLeft = gameState.keys['ArrowLeft'] || gameState.keys['KeyA'];
-    const moveRight = gameState.keys['ArrowRight'] || gameState.keys['KeyD'];
-    const jump = gameState.keys['ArrowUp'] || gameState.keys['KeyW'] || gameState.keys['Space'];
+    const moveLeft = gameState.keys['ArrowLeft'] || gameState.keys['KeyA'] || gameState.keys['a'] || gameState.keys['A'];
+    const moveRight = gameState.keys['ArrowRight'] || gameState.keys['KeyD'] || gameState.keys['d'] || gameState.keys['D'];
+    const jump = gameState.keys['ArrowUp'] || gameState.keys['KeyW'] || gameState.keys['w'] || gameState.keys['W'] || gameState.keys['Space'];
     
     // Apply acceleration/deceleration for smoother movement
     if (moveLeft) {

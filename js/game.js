@@ -326,18 +326,18 @@ function handlePlayerMovement() {
     let moveX = 0;
     let moveY = 0;
     
-    if (gameState.keys.ArrowLeft || gameState.keys.a || gameState.keys.A) {
+    if (gameState.keys.ArrowLeft || gameState.keys.KeyA || gameState.keys.a || gameState.keys.A) {
         moveX = -1;
         gameState.player.direction = -1; // Face left
     }
-    if (gameState.keys.ArrowRight || gameState.keys.d || gameState.keys.D) {
+    if (gameState.keys.ArrowRight || gameState.keys.KeyD || gameState.keys.d || gameState.keys.D) {
         moveX = 1;
         gameState.player.direction = 1; // Face right
     }
-    if (gameState.keys.ArrowUp || gameState.keys.w || gameState.keys.W) {
+    if (gameState.keys.ArrowUp || gameState.keys.KeyW || gameState.keys.w || gameState.keys.W) {
         moveY = -1;
     }
-    if (gameState.keys.ArrowDown || gameState.keys.s || gameState.keys.S) {
+    if (gameState.keys.ArrowDown || gameState.keys.KeyS || gameState.keys.s || gameState.keys.S) {
         moveY = 1;
     }
 
@@ -411,7 +411,7 @@ function handlePlayerMovement() {
     gameState.player.velocityY = Math.min(gameState.player.velocityY, MAX_FALL_SPEED);
 
     // Handle normal jumping
-    const jumpKeyPressed = gameState.keys.ArrowUp || gameState.keys.w || gameState.keys.W || gameState.keys.Space;
+    const jumpKeyPressed = gameState.keys.ArrowUp || gameState.keys.KeyW || gameState.keys.w || gameState.keys.W || gameState.keys.Space;
     const currentTime = Date.now();
     
     if (jumpKeyPressed && gameState.player.isGrounded && currentTime - gameState.player.lastJumpTime >= JUMP_DELAY) {
