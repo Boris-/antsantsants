@@ -1,3 +1,6 @@
+// Set to true for local development (uses HTTP), false for production (uses HTTPS)
+const LOCAL_MACHINE = false;
+
 const express = require('express');
 const http = require('http');
 const https = require('https');
@@ -19,8 +22,12 @@ const app = express();
 let server;
 let io;
 
-// Check if SSL certificates exist
-if (fs.existsSync('/etc/letsencrypt/live/antsantsants.xyz/privkey.pem') && 
+// Check if running locally or if SSL certificates exist
+if (LOCAL_MACHINE) {
+    // Use HTTP for local development
+    server = http.createServer(app);
+    console.log('Server running in HTTP mode (LOCAL_MACHINE flag is true)');
+} else if (fs.existsSync('/etc/letsencrypt/live/antsantsants.xyz/privkey.pem') && 
     fs.existsSync('/etc/letsencrypt/live/antsantsants.xyz/cert.pem') && 
     fs.existsSync('/etc/letsencrypt/live/antsantsants.xyz/chain.pem')) {
     
@@ -691,7 +698,8 @@ initializeWorld();
 const PORT = process.env.PORT || 3001; 
 const HOST = process.env.HOST || '0.0.0.0';  // Allow connections from all network interfaces in production
 server.listen(PORT, HOST, () => {
-    console.log(`Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+    const protocol = LOCAL_MACHINE ? 'http' : 'https';
+    console.log(`Server running on ${protocol}://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
 
 

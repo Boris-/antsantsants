@@ -1,3 +1,5 @@
+const LOCAL_MACHINE = true;
+
 // Multiplayer client functionality
 let socket;
 let otherPlayers = {};
@@ -42,8 +44,14 @@ function initializeMultiplayer() {
     const hostname = window.location.hostname;
     const port = '3001'; // Use the port your server is running on
     
-    const socketUrl = `${protocol}//${hostname}`;  // Removed port for Nginx handling
-    socket = io(socketUrl);
+    if (LOCAL_MACHINE) {
+        // Create socket URL with explicit port - this helps when running on localhost
+        const socketUrl = `${protocol}//${hostname}:${port}`;
+        socket = io(socketUrl);
+    } else {
+        const socketUrl = `${protocol}//${hostname}`;  // Removed port for Nginx handling
+        socket = io(socketUrl);
+    }
     
     setupSocketEvents();
     console.log(`Connecting to multiplayer server at ${socketUrl}...`);
