@@ -42,7 +42,7 @@ function initializeMultiplayer() {
     const hostname = window.location.hostname;
     const port = '3001'; // Use the port your server is running on
     
-    const socketUrl = `${protocol}//${hostname}:${port}`;
+    const socketUrl = `${protocol}//${hostname}`;  // Removed port for Nginx handling
     socket = io(socketUrl);
     
     setupSocketEvents();
