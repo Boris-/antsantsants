@@ -21,6 +21,14 @@ window.addEventListener('load', () => {
         console.error('UI initialization function not found!');
     }
     
+    // Initialize background music
+    if (typeof window.initBackgroundMusic === 'function') {
+        window.initBackgroundMusic();
+        console.log('Background music initialized from main.js');
+    } else {
+        console.error('Background music initialization function not found!');
+    }
+    
     // Ensure day/night cycle is initialized even if not connected to server
     if (!gameState.dayNightCycle && typeof window.updateDayNightCycle === 'function') {
         window.updateDayNightCycle(Date.now());
