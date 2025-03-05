@@ -36,9 +36,17 @@ setInterval(cleanupRecentBlockUpdates, CLEANUP_INTERVAL);
 
 // Initialize multiplayer connection
 function initializeMultiplayer() {
-    socket = io('http://144.91.69.122:3001/');
+    // Use the same protocol (http/https) as the page and a relative path
+    // This will automatically use HTTPS when the page is loaded over HTTPS
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    const port = '3001'; // Use the port your server is running on
+    
+    const socketUrl = `${protocol}//${hostname}:${port}`;
+    socket = io(socketUrl);
+    
     setupSocketEvents();
-    console.log('Connecting to multiplayer server...');
+    console.log(`Connecting to multiplayer server at ${socketUrl}...`);
 }
 
 // Helper function to update chunk metadata

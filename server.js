@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const socketIO = require('socket.io');
 const path = require('path');
 const cors = require('cors');
@@ -12,8 +13,35 @@ const serverStartTime = Date.now();
 
 // Create Express app
 const app = express();
-const server = http.createServer(app);
-const io = socketIO(server, {
+
+// Read SSL certificates
+// Path to certificates from Let's Encrypt (adjust if your paths are different)
+let server;
+let io;
+
+// Check if SSL certificates exist
+if (fs.existsSync('/etc/letsencrypt/live/antsantsants.xyz/privkey.pem') && 
+    fs.existsSync('/etc/letsencrypt/live/antsantsants.xyz/cert.pem') && 
+    fs.existsSync('/etc/letsencrypt/live/antsantsants.xyz/chain.pem')) {
+    
+    // SSL options
+    const options = {
+        key: fs.readFileSync('/etc/letsencrypt/live/antsantsants.xyz/privkey.pem'),
+        cert: fs.readFileSync('/etc/letsencrypt/live/antsantsants.xyz/cert.pem'),
+        ca: fs.readFileSync('/etc/letsencrypt/live/antsantsants.xyz/chain.pem')
+    };
+
+    // Create HTTPS server
+    server = https.createServer(options, app);
+    console.log('Server running in HTTPS mode');
+} else {
+    // Fallback to HTTP for development
+    server = http.createServer(app);
+    console.log('SSL certificates not found, running in HTTP mode');
+}
+
+// Initialize Socket.IO
+io = socketIO(server, {
     cors: {
         origin: '*',
         methods: ['GET', 'POST']

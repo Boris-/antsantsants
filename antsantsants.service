@@ -11,5 +11,10 @@ Restart=on-failure
 Environment=NODE_ENV=production
 Environment=PORT=3001
 
+# Add permissions to read SSL certificates
+ReadWritePaths=/home/gameuser/antsantsants
+ReadOnlyPaths=/etc/letsencrypt/live/antsantsants.xyz/
+ReadOnlyPaths=/etc/letsencrypt/archive/antsantsants.xyz/
+
 [Install]
 WantedBy=multi-user.target 
