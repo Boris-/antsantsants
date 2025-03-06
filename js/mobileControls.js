@@ -226,7 +226,7 @@ function resetMovementKeys() {
     gameState.keys['Space'] = false;
 }
 
-// Create action buttons (mode toggle and place)
+// Create action buttons (mode toggle only)
 function createActionButtons() {
     // Create button container (positioned at bottom right)
     const container = document.createElement('div');
@@ -243,27 +243,13 @@ function createActionButtons() {
     toggleButton.style.height = `${BUTTON_SIZE}px`;
     toggleButton.style.borderRadius = '50%';
     toggleButton.style.backgroundColor = 'rgba(255, 100, 100, 0.7)'; // Start with dig mode color
-    toggleButton.style.marginBottom = `${BUTTON_MARGIN}px`;
     toggleButton.style.display = 'flex';
     toggleButton.style.justifyContent = 'center';
     toggleButton.style.alignItems = 'center';
     toggleButton.innerHTML = '<span style="font-size: 24px; color: white;">⛏️</span>'; // Start with dig icon
     
-    // Create place button
-    const placeButton = document.createElement('div');
-    placeButton.className = 'action-button place-button mobile-control';
-    placeButton.style.width = `${BUTTON_SIZE}px`;
-    placeButton.style.height = `${BUTTON_SIZE}px`;
-    placeButton.style.borderRadius = '50%';
-    placeButton.style.backgroundColor = 'rgba(100, 255, 100, 0.7)';
-    placeButton.style.display = 'flex';
-    placeButton.style.justifyContent = 'center';
-    placeButton.style.alignItems = 'center';
-    placeButton.innerHTML = '<span style="font-size: 24px; color: white;">🧱</span>';
-    
-    // Add buttons to container
+    // Add button to container
     container.appendChild(toggleButton);
-    container.appendChild(placeButton);
     
     // Add container to document
     document.body.appendChild(container);
@@ -273,7 +259,9 @@ function createActionButtons() {
     
     // Set up event handlers
     setupModeToggleButtonEvents(toggleButton);
-    setupButtonEvents(placeButton, handlePlaceButtonPress);
+    
+    // Set up canvas touch events for digging/building
+    setupCanvasTouchEvents();
 }
 
 // Set up mode toggle button event handlers
@@ -294,28 +282,89 @@ function setupModeToggleButtonEvents(button) {
     });
 }
 
-// Set up button event handlers
-function setupButtonEvents(button, handler) {
-    button.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        handler(true);
-    });
+// Set up canvas touch events for digging/building
+function setupCanvasTouchEvents() {
+    if (!gameState.canvas) {
+        // If the canvas isn't available yet, retry after a short delay
+        setTimeout(setupCanvasTouchEvents, 500);
+        return;
+    }
     
-    button.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        handler(false);
-    });
-    
-    button.addEventListener('touchcancel', (e) => {
-        e.preventDefault();
-        handler(false);
-    });
+    // Add touch event listeners to the canvas
+    gameState.canvas.addEventListener('touchstart', handleCanvasTouchStart);
+    gameState.canvas.addEventListener('touchmove', handleCanvasTouchMove);
+    gameState.canvas.addEventListener('touchend', handleCanvasTouchEnd);
+    gameState.canvas.addEventListener('touchcancel', handleCanvasTouchEnd);
 }
 
-// Handle dig button press when in dig mode
+// Handle canvas touch start
+function handleCanvasTouchStart(e) {
+    // Ignore if the touch is on a mobile control
+    if (e.target.classList.contains('mobile-control')) {
+        return;
+    }
+    
+    // Prevent default to avoid double tap zoom
+    e.preventDefault();
+    
+    // Get touch position
+    const touch = e.touches[0];
+    const rect = gameState.canvas.getBoundingClientRect();
+    
+    // Update mouse position
+    gameState.mouseX = touch.clientX - rect.left;
+    gameState.mouseY = touch.clientY - rect.top;
+    
+    // Set mouse down state if in dig mode
+    if (inDigMode) {
+        gameState.mouseDown = true;
+        // Call digging function directly
+        if (typeof handleDigging === 'function') {
+            handleDigging();
+        }
+    } else {
+        // In build mode, perform building
+        if (typeof handleBuilding === 'function') {
+            handleBuilding();
+        }
+    }
+}
+
+// Handle canvas touch move
+function handleCanvasTouchMove(e) {
+    // Ignore if the touch is on a mobile control
+    if (e.target.classList.contains('mobile-control')) {
+        return;
+    }
+    
+    // Prevent default to avoid scrolling
+    e.preventDefault();
+    
+    // Get touch position
+    const touch = e.touches[0];
+    const rect = gameState.canvas.getBoundingClientRect();
+    
+    // Update mouse position
+    gameState.mouseX = touch.clientX - rect.left;
+    gameState.mouseY = touch.clientY - rect.top;
+    
+    // Continue digging if in dig mode and mouse is down
+    if (inDigMode && gameState.mouseDown) {
+        if (typeof handleDigging === 'function') {
+            handleDigging();
+        }
+    }
+}
+
+// Handle canvas touch end
+function handleCanvasTouchEnd(e) {
+    // Reset mouse down state
+    gameState.mouseDown = false;
+}
+
+// Keep these compatibility functions
 function handleDigButtonPress(isPressed) {
-    // This function remains for compatibility but will be used differently
-    // Emulate mouse press for digging
+    // This function remains for compatibility
     gameState.mouseDown = isPressed;
     
     if (isPressed) {
@@ -335,7 +384,6 @@ function handleDigButtonPress(isPressed) {
     }
 }
 
-// Handle place button
 function handlePlaceButtonPress(isPressed) {
     if (isPressed) {
         // Generate touch position in the center of the screen
@@ -347,17 +395,9 @@ function handlePlaceButtonPress(isPressed) {
         gameState.mouseX = centerX - rect.left;
         gameState.mouseY = centerY - rect.top;
         
-        // Check the current mode and call the appropriate function
-        if (inDigMode) {
-            // In dig mode, perform digging
-            if (typeof handleDigging === 'function') {
-                handleDigging();
-            }
-        } else {
-            // In build mode, perform building
-            if (typeof handleBuilding === 'function') {
-                handleBuilding();
-            }
+        // Call building function directly
+        if (typeof handleBuilding === 'function') {
+            handleBuilding();
         }
     }
 }
