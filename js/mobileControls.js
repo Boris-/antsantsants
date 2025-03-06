@@ -67,8 +67,8 @@ function createJoystick() {
     const container = document.createElement('div');
     container.className = 'joystick-container mobile-control';
     container.style.position = 'fixed';
-    container.style.bottom = '100px';
-    container.style.left = '100px';
+    container.style.bottom = '100px'; // Move closer to bottom edge
+    container.style.left = '35px';   // Move closer to left edge
     container.style.width = `${JOYSTICK_SIZE}px`;
     container.style.height = `${JOYSTICK_SIZE}px`;
     container.style.borderRadius = '50%';
@@ -232,8 +232,8 @@ function createActionButtons() {
     const container = document.createElement('div');
     container.className = 'action-buttons-container';
     container.style.position = 'fixed';
-    container.style.bottom = '100px';
-    container.style.right = '50px';
+    container.style.bottom = '30px'; // Move closer to bottom edge
+    container.style.right = '30px';  // Move closer to right edge
     container.style.zIndex = '1000';
     
     // Create mode toggle button
