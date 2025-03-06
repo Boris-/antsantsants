@@ -330,4 +330,48 @@ canvas {
 
 #player-stats-display div:last-child {
     margin-bottom: 0;
+}
+
+/* Mobile Controls Styling */
+.mobile .joystick-container {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.mobile .action-button {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.mobile .action-button:active {
+    transform: scale(0.95);
+}
+
+/* Adjustments for mobile UI */
+.mobile #game-stats {
+    font-size: 12px;
+    padding: 5px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 5px;
+}
+
+.mobile #inventory-container {
+    width: 60px;
+    right: 10px;
+}
+
+.mobile .inventory-item {
+    width: 50px;
+    height: 20px;
+    margin-bottom: 5px;
+    font-size: 10px;
+}
+
+/* Hide desktop controls help on mobile */
+.mobile .controls-help {
+    display: none;
 } 

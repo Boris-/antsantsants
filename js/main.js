@@ -43,6 +43,14 @@ window.addEventListener('load', () => {
         console.log('Day/night cycle initialized from main.js');
     }
     
+    // Initialize mobile controls if available
+    if (typeof window.initializeMobileControls === 'function') {
+        window.initializeMobileControls();
+        console.log('Mobile controls initialized from main.js');
+    } else {
+        console.error('Mobile controls initialization function not found!');
+    }
+    
     // Initialize multiplayer connection
     initializeMultiplayer();
     
