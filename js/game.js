@@ -90,7 +90,7 @@ const PLAYER_CONSTANTS = {
     WALL_SLIDE_SPEED: 2,   // Speed at which ant slides down walls
     WALL_STICK_FORCE: 0.5,  // How strongly ant sticks to walls when climbing
     PARACHUTE_DEPLOY_SPEED: 5, // Speed at which parachute deploys
-    PARACHUTE_FALL_SPEED: 2,   // Fall speed with parachute
+    PARACHUTE_FALL_SPEED: 5,   // Fall speed with parachute
     PARACHUTE_DRIFT: 0.5,       // Horizontal drift with parachute
     JUMP_DELAY: 500,    // Delay in milliseconds before allowing another jump
     MIN_FALL_DISTANCE_FOR_PARACHUTE: 3 * 32  // 3 blocks (each block is 32 pixels)

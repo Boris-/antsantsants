@@ -2,14 +2,13 @@
 // Adds touch-friendly controls for mobile devices
 
 // Constants
-const JOYSTICK_SIZE = 100; // Size of the joystick in pixels
-const JOYSTICK_INNER_SIZE = 45; // Size of the inner circle
-const BUTTON_SIZE = 60; // Size of action buttons
-const BUTTON_MARGIN = 30; // Margin between buttons
+const JOYSTICK_SIZE = 120; // Size of the joystick in pixels
+const JOYSTICK_INNER_SIZE = 60; // Size of the inner circle
+const BUTTON_SIZE = 70; // Size of action buttons
+const BUTTON_MARGIN = 20; // Margin between buttons
 
 // State
 let isMobile = false;
-let digMode = false; // Whether dig mode is active
 let joystick = {
     active: false,
     startX: 0,
@@ -23,6 +22,10 @@ let joystick = {
 // Movement values (-1 to 1 range)
 let moveX = 0;
 let moveY = 0;
+
+// Toggle state for dig/build mode
+let inDigMode = true;
+let modeToggleButton = null;
 
 // Initialize mobile controls
 function initializeMobileControls() {
@@ -40,18 +43,6 @@ function initializeMobileControls() {
                 e.preventDefault();
             }
         }, { passive: false });
-        
-        // Add screen touch handler for dig mode
-        if (gameState && gameState.canvas) {
-            gameState.canvas.addEventListener('touchstart', handleScreenTouch);
-        } else {
-            // If gameState.canvas isn't available yet, wait for it
-            document.addEventListener('DOMContentLoaded', () => {
-                if (gameState && gameState.canvas) {
-                    gameState.canvas.addEventListener('touchstart', handleScreenTouch);
-                }
-            });
-        }
         
         console.log('Mobile controls initialized');
     }
@@ -235,7 +226,7 @@ function resetMovementKeys() {
     gameState.keys['Space'] = false;
 }
 
-// Create action buttons (dig and place)
+// Create action buttons (mode toggle and place)
 function createActionButtons() {
     // Create button container (positioned at bottom right)
     const container = document.createElement('div');
@@ -245,18 +236,18 @@ function createActionButtons() {
     container.style.right = '50px';
     container.style.zIndex = '1000';
     
-    // Create dig button
-    const digButton = document.createElement('div');
-    digButton.className = 'action-button dig-button mobile-control';
-    digButton.style.width = `${BUTTON_SIZE}px`;
-    digButton.style.height = `${BUTTON_SIZE}px`;
-    digButton.style.borderRadius = '50%';
-    digButton.style.backgroundColor = 'rgba(255, 100, 100, 0.7)';
-    digButton.style.marginBottom = `${BUTTON_MARGIN}px`;
-    digButton.style.display = 'flex';
-    digButton.style.justifyContent = 'center';
-    digButton.style.alignItems = 'center';
-    digButton.innerHTML = '<span style="font-size: 24px; color: white;">⛏️</span>';
+    // Create mode toggle button
+    const toggleButton = document.createElement('div');
+    toggleButton.className = 'action-button mode-toggle-button mobile-control';
+    toggleButton.style.width = `${BUTTON_SIZE}px`;
+    toggleButton.style.height = `${BUTTON_SIZE}px`;
+    toggleButton.style.borderRadius = '50%';
+    toggleButton.style.backgroundColor = 'rgba(255, 100, 100, 0.7)'; // Start with dig mode color
+    toggleButton.style.marginBottom = `${BUTTON_MARGIN}px`;
+    toggleButton.style.display = 'flex';
+    toggleButton.style.justifyContent = 'center';
+    toggleButton.style.alignItems = 'center';
+    toggleButton.innerHTML = '<span style="font-size: 24px; color: white;">⛏️</span>'; // Start with dig icon
     
     // Create place button
     const placeButton = document.createElement('div');
@@ -271,15 +262,36 @@ function createActionButtons() {
     placeButton.innerHTML = '<span style="font-size: 24px; color: white;">🧱</span>';
     
     // Add buttons to container
-    container.appendChild(digButton);
+    container.appendChild(toggleButton);
     container.appendChild(placeButton);
     
     // Add container to document
     document.body.appendChild(container);
     
+    // Store reference to toggle button
+    modeToggleButton = toggleButton;
+    
     // Set up event handlers
-    setupButtonEvents(digButton, handleDigButtonPress);
+    setupModeToggleButtonEvents(toggleButton);
     setupButtonEvents(placeButton, handlePlaceButtonPress);
+}
+
+// Set up mode toggle button event handlers
+function setupModeToggleButtonEvents(button) {
+    button.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        // Toggle the mode
+        inDigMode = !inDigMode;
+        
+        // Update button appearance based on mode
+        if (inDigMode) {
+            button.style.backgroundColor = 'rgba(255, 100, 100, 0.7)'; // Dig mode color
+            button.innerHTML = '<span style="font-size: 24px; color: white;">⛏️</span>'; // Dig icon
+        } else {
+            button.style.backgroundColor = 'rgba(100, 100, 255, 0.7)'; // Build mode color
+            button.innerHTML = '<span style="font-size: 24px; color: white;">🧱</span>'; // Build icon
+        }
+    });
 }
 
 // Set up button event handlers
@@ -300,32 +312,14 @@ function setupButtonEvents(button, handler) {
     });
 }
 
-// Handle dig button
+// Handle dig button press when in dig mode
 function handleDigButtonPress(isPressed) {
+    // This function remains for compatibility but will be used differently
+    // Emulate mouse press for digging
+    gameState.mouseDown = isPressed;
+    
     if (isPressed) {
-        // Toggle dig mode on press
-        digMode = !digMode;
-        
-        // Visual feedback for dig mode
-        const digButton = document.querySelector('.dig-button');
-        if (digButton) {
-            if (digMode) {
-                digButton.style.backgroundColor = 'rgba(255, 50, 50, 0.9)';
-                digButton.style.boxShadow = '0 0 15px rgba(255, 0, 0, 0.7)';
-            } else {
-                digButton.style.backgroundColor = 'rgba(255, 100, 100, 0.7)';
-                digButton.style.boxShadow = 'none';
-            }
-        }
-        
-        console.log('Dig mode ' + (digMode ? 'activated' : 'deactivated'));
-    }
-}
-
-// Handle place button
-function handlePlaceButtonPress(isPressed) {
-    if (isPressed) {
-        // Generate touch position in the center of the screen for placing
+        // Generate touch position in the center of the screen for digging
         const centerX = window.innerWidth / 2;
         const centerY = window.innerHeight / 2;
         
@@ -334,48 +328,35 @@ function handlePlaceButtonPress(isPressed) {
         gameState.mouseX = centerX - rect.left;
         gameState.mouseY = centerY - rect.top;
         
-        // Call building function directly
-        if (typeof handleBuilding === 'function') {
-            handleBuilding();
+        // Call digging function directly
+        if (typeof handleDigging === 'function') {
+            handleDigging();
         }
     }
 }
 
-// Handle screen touch for dig mode
-function handleScreenTouch(e) {
-    // Only process if in dig mode and not touching a control element
-    if (!digMode || e.target.classList.contains('mobile-control')) {
-        return;
-    }
-    
-    e.preventDefault();
-    
-    // Get touch position
-    const touch = e.touches[0];
-    const rect = gameState.canvas.getBoundingClientRect();
-    gameState.mouseX = touch.clientX - rect.left;
-    gameState.mouseY = touch.clientY - rect.top;
-    
-    // Place a block at touch position
-    if (typeof handlePlacingBlock === 'function') {
-        handlePlacingBlock();
-    } else {
-        // Call placeBlock directly as fallback
-        if (gameState && gameState.player && gameState.player.inventory) {
-            // Set the currently selected tile type
-            const tileTypeToPlace = 1; // Default to dirt (adjust based on your game)
-            
-            // Emulate the place button press
-            const centerX = touch.clientX;
-            const centerY = touch.clientY;
-            
-            // Update mouse position
-            gameState.mouseX = centerX - rect.left;
-            gameState.mouseY = centerY - rect.top;
-            
-            // Place block
-            if (typeof placeBlock === 'function') {
-                placeBlock(tileTypeToPlace);
+// Handle place button
+function handlePlaceButtonPress(isPressed) {
+    if (isPressed) {
+        // Generate touch position in the center of the screen
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        
+        // Update mouse position
+        const rect = gameState.canvas.getBoundingClientRect();
+        gameState.mouseX = centerX - rect.left;
+        gameState.mouseY = centerY - rect.top;
+        
+        // Check the current mode and call the appropriate function
+        if (inDigMode) {
+            // In dig mode, perform digging
+            if (typeof handleDigging === 'function') {
+                handleDigging();
+            }
+        } else {
+            // In build mode, perform building
+            if (typeof handleBuilding === 'function') {
+                handleBuilding();
             }
         }
     }
