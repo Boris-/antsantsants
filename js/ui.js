@@ -331,6 +331,32 @@ function showDamageFlash() {
     }, 200);
 }
 
+// Show controls help in the middle top of the screen
+function showControlsHelp(duration = 5000) {
+    // Remove any existing controls help
+    const existingHelp = document.querySelector('.controls-help');
+    if (existingHelp) {
+        existingHelp.remove();
+    }
+    
+    // Create controls help element
+    const helpElement = document.createElement('div');
+    helpElement.className = 'controls-help';
+    helpElement.innerHTML = `
+        <div class="controls-title">CONTROLS</div>
+        <div class="controls-text">WASD or ARROWS to move, Mouse click to dig</div>
+    `;
+    document.body.appendChild(helpElement);
+    
+    // Fade out and remove after duration
+    setTimeout(() => {
+        helpElement.classList.add('fade-out');
+        setTimeout(() => {
+            helpElement.remove();
+        }, 1000);
+    }, duration);
+}
+
 // Expose UI functions to window object
 window.initializeUI = initializeUI;
 window.updateUI = updateUI;
@@ -343,6 +369,7 @@ window.updatePlayerStatsDisplay = updatePlayerStatsDisplay;
 window.showGameMessage = showGameMessage;
 window.toggleDebugMode = toggleDebugMode;
 window.showDamageFlash = showDamageFlash;
+window.showControlsHelp = showControlsHelp;
 
 // Log that UI functions have been exported
 console.log("UI functions exported to window object"); 

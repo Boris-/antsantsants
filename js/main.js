@@ -17,6 +17,14 @@ window.addEventListener('load', () => {
     if (typeof window.initializeUI === 'function') {
         window.initializeUI();
         console.log('UI initialized from main.js');
+        
+        // Show controls help
+        if (typeof window.showControlsHelp === 'function') {
+            window.showControlsHelp(5000); // Show for 5 seconds
+            console.log('Controls help displayed');
+        } else {
+            console.error('showControlsHelp function not found!');
+        }
     } else {
         console.error('UI initialization function not found!');
     }

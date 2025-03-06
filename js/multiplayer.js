@@ -224,6 +224,7 @@ function setupSocketEvents() {
     
     socket.on('chunkData', processChunkData);
     socket.on('blockUpdate', processBlockUpdate);
+    socket.on('blockPlace', processBlockUpdate);
     
     socket.on('playerInventoryUpdated', (data) => {
         if (otherPlayers[data.id]) {
@@ -423,6 +424,28 @@ function sendBlockDig(x, y, tileType) {
         });
     } else {
         console.warn("Socket not connected, can't send block dig");
+    }
+}
+
+// Send block place to server
+function sendBlockPlace(x, y, tileType, inventoryItemUsed) {
+    if (!isConnectedToServer) {
+        console.warn("Not connected to server, can't send block place");
+        return;
+    }
+    
+    if (socket && socket.connected) {
+        console.log(`Multiplayer: Sending block place to server at (${x}, ${y}), tile type: ${tileType}, item used: ${inventoryItemUsed}`);
+        
+        // Send block place to server with tile coordinates
+        socket.emit('blockPlace', {
+            x: x * TILE_SIZE, // Convert tile coordinates to world coordinates for server
+            y: y * TILE_SIZE, // Convert tile coordinates to world coordinates for server
+            tileType: tileType,
+            inventoryItemUsed: inventoryItemUsed
+        });
+    } else {
+        console.warn("Socket not connected, can't send block place");
     }
 }
 

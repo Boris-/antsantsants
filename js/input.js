@@ -37,10 +37,8 @@ function setupEventListeners() {
     
     gameState.canvas.addEventListener('mousedown', (e) => {
         console.log("Mouse down event triggered");
-        gameState.mouseDown = true;
-        gameState.mouse.leftPressed = true;
         
-        // Update mouse position before handling digging
+        // Update mouse position before handling any actions
         const rect = gameState.canvas.getBoundingClientRect();
         gameState.mouseX = e.clientX - rect.left;
         gameState.mouseY = e.clientY - rect.top;
@@ -50,19 +48,34 @@ function setupEventListeners() {
         gameState.mouse.y = gameState.mouseY;
         
         console.log(`Mouse position: (${gameState.mouseX}, ${gameState.mouseY})`);
-        console.log(`Mouse down state: ${gameState.mouseDown}`);
         
-        // Only call handleDigging if mouse is down
-        if (gameState.mouseDown) {
-            console.log("Calling handleDigging from mousedown event");
+        // Handle left click (digging)
+        if (e.button === 0) {
+            gameState.mouseDown = true;
+            gameState.mouse.leftPressed = true;
+            
+            console.log("Left click - calling handleDigging");
             handleDigging();
+        }
+        
+        // Handle right click (building)
+        if (e.button === 2) {
+            console.log("Right click - calling handleBuilding");
+            handleBuilding();
         }
     });
     
     gameState.canvas.addEventListener('mouseup', (e) => {
         console.log("Mouse up event triggered");
-        gameState.mouseDown = false;
-        gameState.mouse.leftPressed = false;
+        if (e.button === 0) {
+            gameState.mouseDown = false;
+            gameState.mouse.leftPressed = false;
+        }
+    });
+    
+    // Prevent context menu on right click
+    gameState.canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
     });
     
     // Mouse wheel for zooming
@@ -271,6 +284,95 @@ function handleDigging() {
                 }
             }
         }
+    }
+}
+
+// Handle building (placing blocks)
+function handleBuilding() {
+    // Get mouse position relative to canvas
+    const rect = gameState.canvas.getBoundingClientRect();
+    const mouseX = gameState.mouseX;
+    const mouseY = gameState.mouseY;
+    
+    // Calculate mouse position in world coordinates (accounting for zoom)
+    const mouseWorldX = gameState.camera.x + (mouseX / gameState.zoom);
+    const mouseWorldY = gameState.camera.y + (mouseY / gameState.zoom);
+    
+    // Convert to tile coordinates
+    const tileX = Math.floor(mouseWorldX / TILE_SIZE);
+    const tileY = Math.floor(mouseWorldY / TILE_SIZE);
+    
+    // Debug output
+    if (gameState.debug) {
+        console.log(`Building - Mouse: (${mouseX}, ${mouseY}), World: (${mouseWorldX}, ${mouseWorldY}), Tile: (${tileX}, ${tileY})`);
+    }
+    
+    // Calculate distance from player to mouse position
+    const playerCenterX = gameState.player.x + gameState.player.width / 2;
+    const playerCenterY = gameState.player.y + gameState.player.height / 2;
+    const tileCenterX = tileX * TILE_SIZE + TILE_SIZE / 2;
+    const tileCenterY = tileY * TILE_SIZE + TILE_SIZE / 2;
+    
+    const distance = Math.sqrt(
+        Math.pow(playerCenterX - tileCenterX, 2) + 
+        Math.pow(playerCenterY - tileCenterY, 2)
+    );
+    
+    // Only allow building within a certain range
+    const maxBuildDistance = 100;
+    if (distance <= maxBuildDistance) {
+        const currentTile = getTile(tileX, tileY);
+        
+        // Only allow building on air tiles
+        if (currentTile === TILE_TYPES.AIR) {
+            // For now, let's use DIRT as the default building block
+            // We'll use the first inventory item that's available
+            let blockToPlace = null;
+            let inventoryItemUsed = null;
+            
+            // Check if player has any blocks in inventory
+            if (gameState.player.inventory.dirt > 0) {
+                blockToPlace = TILE_TYPES.DIRT;
+                inventoryItemUsed = 'dirt';
+                gameState.player.inventory.dirt--;
+            } else if (gameState.player.inventory.stone > 0) {
+                blockToPlace = TILE_TYPES.STONE;
+                inventoryItemUsed = 'stone';
+                gameState.player.inventory.stone--;
+            } else if (gameState.player.inventory.sand > 0) {
+                blockToPlace = TILE_TYPES.SAND;
+                inventoryItemUsed = 'sand';
+                gameState.player.inventory.sand--;
+            }
+            
+            if (blockToPlace !== null) {
+                // Set the new tile
+                setTile(tileX, tileY, blockToPlace);
+                
+                // Update UI
+                updateInventoryUI();
+                
+                // Send to server if in multiplayer mode
+                if (typeof sendBlockPlace === 'function') {
+                    sendBlockPlace(tileX, tileY, blockToPlace, inventoryItemUsed);
+                }
+                
+                // Mark world as having unsaved changes
+                gameState.hasUnsavedChanges = true;
+                
+                // Add visual feedback (optional)
+                showNotification(`Placed ${inventoryItemUsed} block`);
+            } else {
+                // No blocks in inventory
+                showNotification("No blocks in inventory!");
+            }
+        } else {
+            // Can't build on non-air tiles
+            showNotification("Can't build here!");
+        }
+    } else {
+        // Too far away
+        showNotification("Too far to build!");
     }
 }
 

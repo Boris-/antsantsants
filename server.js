@@ -474,6 +474,90 @@ io.on('connection', (socket) => {
         }
     });
     
+    // Handle block placement
+    socket.on('blockPlace', (data) => {
+        const { x, y, tileType, inventoryItemUsed } = data;
+        
+        // Create a unique key for this block position
+        const blockKey = `${x},${y}`;
+        
+        // Check if this block was recently updated
+        const now = Date.now();
+        const lastUpdate = gameState.recentBlockUpdates.get(blockKey);
+        
+        // Only process if it's been at least 1 second since the last update for this block
+        // or if this is the first update for this block
+        if (!lastUpdate || (now - lastUpdate > 1000)) {
+            // Update chunk data
+            const chunkX = Math.floor(x / (16 * 32)); // CHUNK_SIZE * TILE_SIZE
+            const chunkY = Math.floor(y / (16 * 32));
+            const chunkKey = `${chunkX},${chunkY}`;
+            
+            // Ensure chunk exists in server memory
+            if (!gameState.chunks[chunkKey]) {
+                gameState.chunks[chunkKey] = worldGeneration.generateChunk(chunkX, chunkY, gameState);
+                
+                // Mark as server-generated
+                if (!gameState.chunks[chunkKey].metadata) {
+                    gameState.chunks[chunkKey].metadata = {};
+                }
+                gameState.chunks[chunkKey].metadata.serverGenerated = true;
+                gameState.chunks[chunkKey].metadata.generatedAt = Date.now();
+            }
+            
+            // Update tile in chunk
+            const localX = Math.floor(x / 32) % 16; // x % CHUNK_SIZE
+            const localY = Math.floor(y / 32) % 16;
+            
+            if (gameState.chunks[chunkKey] && 
+                gameState.chunks[chunkKey][localY] && 
+                gameState.chunks[chunkKey][localY][localX] !== undefined) {
+                
+                // Only update if the tile is air (to prevent overwriting existing blocks)
+                if (gameState.chunks[chunkKey][localY][localX] === 0) { // 0 = TILE_TYPES.AIR
+                    // Store the original tile type before changing it
+                    const originalTileType = gameState.chunks[chunkKey][localY][localX];
+                    
+                    // Update the tile
+                    gameState.chunks[chunkKey][localY][localX] = tileType;
+                    
+                    // Record this update time
+                    gameState.recentBlockUpdates.set(blockKey, now);
+                    
+                    // Increment block updates counter
+                    gameState.worldMetadata.blockUpdates++;
+                    
+                    // If an inventory item was used, update the player's inventory
+                    if (inventoryItemUsed && gameState.players[socket.id]) {
+                        // Ensure the inventory property exists
+                        if (!gameState.players[socket.id].inventory) {
+                            gameState.players[socket.id].inventory = {};
+                        }
+                        
+                        // Decrement the item count
+                        if (gameState.players[socket.id].inventory[inventoryItemUsed] > 0) {
+                            gameState.players[socket.id].inventory[inventoryItemUsed]--;
+                        }
+                    }
+                    
+                    // Broadcast block update to all players, including the player ID who made the change
+                    io.emit('blockPlace', { 
+                        x, 
+                        y, 
+                        tileType, 
+                        playerId: socket.id,
+                        originalTileType
+                    });
+                    
+                    // Save world after significant changes (every 100 block updates)
+                    if (gameState.worldMetadata.blockUpdates % 100 === 0) {
+                        saveWorld();
+                    }
+                }
+            }
+        }
+    });
+    
     // Handle chunk request
     socket.on('requestChunk', (data) => {
         const { chunkX, chunkY } = data;
