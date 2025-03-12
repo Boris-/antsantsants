@@ -374,24 +374,32 @@ function handlePlayerMovement() {
             gameState.player.velocityX = Math.max(-SPEED * 0.5, Math.min(SPEED * 0.5, gameState.player.velocityX));
         }
     } else if (gameState.player.isWallSticking) {
-        // Allow vertical movement along the wall
-        if (moveY !== 0) {
-            gameState.player.velocityY = moveY * SPEED * 0.7;
-        } else {
-            // Slow wall slide
-            gameState.player.velocityY = Math.min(WALL_SLIDE_SPEED, gameState.player.velocityY);
-        }
-
-        // Wall jump
-        if (gameState.keys.Space) {
-            // Jump away from wall
-            gameState.player.velocityY = JUMP_FORCE;
-            gameState.player.velocityX = (touchingLeftWall ? 1 : -1) * SPEED * 1.5;
+        // Check if player is moving away from the wall
+        if ((touchingLeftWall && moveX > 0) || (touchingRightWall && moveX < 0)) {
+            // Unstick from wall when pressing opposite direction
             gameState.player.isWallSticking = false;
-        }
+            // Give a small push in the direction pressed
+            gameState.player.velocityX = moveX * SPEED * 0.5;
+        } else {
+            // Allow vertical movement along the wall
+            if (moveY !== 0) {
+                gameState.player.velocityY = moveY * SPEED * 0.7;
+            } else {
+                // No automatic sliding - stick in place
+                gameState.player.velocityY = 0;
+            }
 
-        // Apply wall stick force
-        gameState.player.velocityX *= WALL_STICK_FORCE;
+            // Wall jump
+            if (gameState.keys.Space) {
+                // Jump away from wall
+                gameState.player.velocityY = JUMP_FORCE;
+                gameState.player.velocityX = (touchingLeftWall ? 1 : -1) * SPEED * 1.5;
+                gameState.player.isWallSticking = false;
+            }
+
+            // Apply wall stick force
+            gameState.player.velocityX *= WALL_STICK_FORCE;
+        }
     } else {
         // Normal horizontal movement
         const acceleration = gameState.player.isGrounded ? 1 : 0.5;

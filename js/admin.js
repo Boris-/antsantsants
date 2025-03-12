@@ -14,21 +14,6 @@ let serverStats = {
     serverStartTime: null
 };
 
-// Map rendering variables
-const mapCanvas = document.createElement('canvas');
-const mapCtx = mapCanvas.getContext('2d');
-const mapColors = {
-    water: '#0077be',
-    sand: '#c2b280',
-    grass: '#567d46',
-    forest: '#228b22',
-    mountain: '#808080',
-    snow: '#fffafa',
-    cave: '#3b2921',
-    player: '#ff0000',
-    otherPlayers: '#ffaa00'
-};
-
 // Constants
 const UPDATE_INTERVAL = 2000; // Update every 2 seconds
 const SERVER_URL = window.location.hostname + ':3001'; // Dynamically determine server URL
@@ -42,9 +27,6 @@ function initializeAdmin() {
     
     // Setup UI elements
     setupUIElements();
-    
-    // Initialize the map
-    initializeMap();
     
     // Start periodic updates
     startPeriodicUpdates();
@@ -86,11 +68,6 @@ function setupSocketEvents() {
         if (data.serverStartTime !== undefined) serverStats.serverStartTime = data.serverStartTime;
         
         updatePlayerListDisplay();
-    });
-    
-    socket.on('worldMapData', (data) => {
-        console.log('Received world map data');
-        renderWorldMap(data);
     });
     
     socket.on('worldReset', () => {
@@ -137,29 +114,12 @@ function setupUIElements() {
     });
 }
 
-// Initialize the world map
-function initializeMap() {
-    const mapContainer = document.getElementById('world-map');
-    
-    // Set canvas dimensions
-    mapCanvas.width = mapContainer.clientWidth;
-    mapCanvas.height = mapContainer.clientHeight;
-    
-    // Append canvas to container
-    mapContainer.innerHTML = '';
-    mapContainer.appendChild(mapCanvas);
-    
-    // Request map data
-    requestMapData();
-}
-
 // Start periodic updates
 function startPeriodicUpdates() {
     setInterval(() => {
         if (isConnected) {
             requestWorldData();
             requestPlayerList();
-            requestMapData();
         }
     }, UPDATE_INTERVAL);
 }
@@ -175,13 +135,6 @@ function requestWorldData() {
 function requestPlayerList() {
     if (isConnected) {
         socket.emit('getPlayerList');
-    }
-}
-
-// Request map data from server
-function requestMapData() {
-    if (isConnected) {
-        socket.emit('getWorldMap');
     }
 }
 
@@ -394,149 +347,6 @@ function formatTimeElapsed(seconds) {
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
         return `${days} day${days !== 1 ? 's' : ''} ${hours} hour${hours !== 1 ? 's' : ''}`;
-    }
-}
-
-// Render the world map
-function renderWorldMap(mapData) {
-    if (!mapData || !mapData.terrain) return;
-    
-    const ctx = mapCtx;
-    const width = mapCanvas.width;
-    const height = mapCanvas.height;
-    const mapCenter = { x: width / 2, y: height / 2 };
-    
-    // Clear the canvas
-    ctx.clearRect(0, 0, width, height);
-    
-    // Draw the terrain
-    const terrainData = mapData.terrain;
-    const tileSize = Math.min(width / terrainData[0].length, height / terrainData.length);
-    
-    // Calculate map offset to center it
-    const mapOffsetX = (width - (terrainData[0].length * tileSize)) / 2;
-    const mapOffsetY = (height - (terrainData.length * tileSize)) / 2;
-    
-    for (let y = 0; y < terrainData.length; y++) {
-        for (let x = 0; x < terrainData[y].length; x++) {
-            const tileType = terrainData[y][x];
-            ctx.fillStyle = getTileColor(tileType);
-            ctx.fillRect(
-                mapOffsetX + (x * tileSize), 
-                mapOffsetY + (y * tileSize), 
-                tileSize, 
-                tileSize
-            );
-        }
-    }
-    
-    // Draw grid lines (optional)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 0.5;
-    
-    // Draw players
-    if (mapData.players) {
-        const scale = mapData.scale || 10;
-        const mapSize = terrainData.length * tileSize;
-        
-        // Draw a border around the map
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(mapOffsetX, mapOffsetY, terrainData[0].length * tileSize, terrainData.length * tileSize);
-        
-        // Draw coordinate system origin
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(mapCenter.x, mapOffsetY);
-        ctx.lineTo(mapCenter.x, mapOffsetY + mapSize);
-        ctx.moveTo(mapOffsetX, mapCenter.y);
-        ctx.lineTo(mapOffsetX + mapSize, mapCenter.y);
-        ctx.stroke();
-        
-        // Mark center of map
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.beginPath();
-        ctx.arc(mapCenter.x, mapCenter.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Draw each player
-        Object.entries(mapData.players).forEach(([id, player]) => {
-            if (!player || typeof player.x !== 'number' || typeof player.y !== 'number') return;
-            
-            // Calculate position in map coordinates
-            const playerX = mapCenter.x + (player.x / scale);
-            const playerY = mapCenter.y + (player.y / scale);
-            
-            // Check if player is within map bounds
-            if (
-                playerX >= mapOffsetX && 
-                playerX <= mapOffsetX + (terrainData[0].length * tileSize) &&
-                playerY >= mapOffsetY && 
-                playerY <= mapOffsetY + (terrainData.length * tileSize)
-            ) {
-                // Draw player marker
-                const isActive = player.active === true;
-                ctx.fillStyle = isActive ? mapColors.player : mapColors.otherPlayers;
-                
-                // Draw player dot
-                ctx.beginPath();
-                ctx.arc(playerX, playerY, 5, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Draw player ID label
-                ctx.font = '10px Arial';
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'center';
-                ctx.fillText(id.substring(0, 4), playerX, playerY - 10);
-            }
-        });
-        
-        // Add a legend for the map
-        const legendY = height - 25;
-        const legendX = 15;
-        const legendSpacing = 80;
-        
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'left';
-        
-        // Active player legend
-        ctx.fillStyle = mapColors.player;
-        ctx.beginPath();
-        ctx.arc(legendX, legendY, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.fillText('Active Player', legendX + 10, legendY + 4);
-        
-        // Inactive player legend
-        ctx.fillStyle = mapColors.otherPlayers;
-        ctx.beginPath();
-        ctx.arc(legendX + legendSpacing, legendY, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.fillText('Inactive Player', legendX + legendSpacing + 10, legendY + 4);
-        
-        // Origin marker legend
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.beginPath();
-        ctx.arc(legendX + (legendSpacing * 2), legendY, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.fillText('Origin (0,0)', legendX + (legendSpacing * 2) + 10, legendY + 4);
-    }
-}
-
-// Get color for tile type
-function getTileColor(tileType) {
-    switch(tileType) {
-        case 0: return mapColors.water;
-        case 1: return mapColors.sand;
-        case 2: return mapColors.grass;
-        case 3: return mapColors.forest;
-        case 4: return mapColors.mountain;
-        case 5: return mapColors.snow;
-        case 6: return mapColors.cave;
-        default: return '#333333';
     }
 }
 
